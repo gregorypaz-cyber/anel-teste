@@ -3,385 +3,584 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Validação HRV 7 dias — Reck</title>
+<title>Reck — Painel do Anel R10</title>
 <style>
-  :root { --bg:#0f1115; --card:#181b22; --line:#2a2f3a; --txt:#e7eaf0; --muted:#9aa3b2;
-          --accent:#4f8cff; --good:#46d39a; --warn:#ffb454; --bad:#ff6b6b; --em:#a78bfa; }
+  :root {
+    --bg:#0f1115; --card:#181b22; --line:#2a2f3a; --txt:#e7eaf0; --muted:#9aa3b2;
+    --accent:#4f8cff; --good:#46d39a; --warn:#ffb454; --bad:#ff6b6b; --em:#a78bfa;
+  }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   body { margin:0; background:var(--bg); color:var(--txt);
          font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-         padding:14px; padding-bottom:64px; }
-  h1 { font-size:18px; margin:4px 0 2px; }
-  .sub { color:var(--muted); font-size:12px; margin-bottom:16px; line-height:1.5; }
+         padding:14px; padding-bottom:72px; }
+
+  /* cabeçalho */
+  .header { display:flex; align-items:center; gap:10px; margin-bottom:16px; }
+  .header h1 { font-size:20px; margin:0; }
+  .conn-dot { width:10px; height:10px; border-radius:50%; background:var(--line); flex-shrink:0; }
+  .conn-dot.on { background:var(--good); box-shadow:0 0 6px var(--good); }
+
   .card { background:var(--card); border:1px solid var(--line); border-radius:16px;
           padding:14px; margin-bottom:12px; }
   h2 { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.08em;
        color:var(--muted); margin:0 0 10px; }
-  button { width:100%; padding:14px; font-size:15px; font-weight:600; border:none;
+
+  button { width:100%; padding:13px; font-size:14px; font-weight:600; border:none;
            border-radius:12px; background:var(--accent); color:#fff; margin-top:8px; cursor:pointer; }
   button.sec { background:#1e222e; color:var(--txt); border:1px solid var(--line); }
-  button:disabled { opacity:.38; }
-  .status { font-size:13px; margin-top:10px; padding:10px 12px; border-radius:10px;
-            background:#11141a; border:1px solid var(--line); color:var(--muted); }
-  .status.ok   { color:var(--good); border-color:rgba(70,211,154,.25); }
-  .status.err  { color:var(--bad);  border-color:rgba(255,107,107,.25); }
-  .status.warn { color:var(--warn); border-color:rgba(255,180,84,.25); }
+  button.sm  { padding:9px; font-size:12px; border-radius:10px; }
+  button:disabled { opacity:.35; cursor:default; }
 
-  /* tabela principal */
-  .cmp-table { width:100%; border-collapse:collapse; margin-top:10px; font-size:13px; }
-  .cmp-table th { text-align:left; padding:5px 6px; border-bottom:2px solid var(--line);
-                  color:var(--muted); font-size:11px; font-weight:600; }
-  .cmp-table td { padding:7px 6px; border-bottom:1px solid var(--line);
-                  font-variant-numeric:tabular-nums; }
-  .cmp-table td.r { text-align:right; }
-  .cmp-table tr.pending td { color:var(--muted); }
-  .arrow-up   { color:var(--good); }
-  .arrow-down { color:var(--bad); }
-  .arrow-flat { color:var(--muted); }
+  .status { font-size:12px; margin-top:8px; padding:9px 11px; border-radius:10px;
+            background:#11141a; border:1px solid var(--line); color:var(--muted); word-break:break-word; }
+  .status.ok   { color:var(--good);  border-color:rgba(70,211,154,.25); }
+  .status.err  { color:var(--bad);   border-color:rgba(255,107,107,.25); }
+  .status.warn { color:var(--warn);  border-color:rgba(255,180,84,.25); }
+
+  /* progress */
+  .progress { height:3px; background:var(--line); border-radius:99px; margin:6px 0; overflow:hidden; }
+  .progress-fill { height:100%; background:var(--accent); border-radius:99px; transition:width .3s; width:0%; }
+
+  /* grid de KPIs */
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px; }
+  .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:10px; }
+  .kpi { background:#0d1018; border:1px solid var(--line); border-radius:12px; padding:10px; }
+  .kpi-lbl { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .kpi-val { font-size:24px; font-weight:800; margin-top:2px; letter-spacing:-1px; }
+  .kpi-unit { font-size:11px; color:var(--muted); }
+
+  /* tabelas */
+  table { width:100%; border-collapse:collapse; font-size:12px; margin-top:6px; }
+  th { text-align:left; padding:4px 5px; border-bottom:2px solid var(--line);
+       color:var(--muted); font-size:10px; font-weight:600; }
+  td { padding:5px 5px; border-bottom:1px solid var(--line); font-variant-numeric:tabular-nums; }
+  td.r { text-align:right; font-family:monospace; }
+
+  /* badges */
+  .badge { display:inline-flex; align-items:center; font-size:10px; font-weight:600;
+           padding:2px 8px; border-radius:99px; margin:2px 2px 2px 0; }
+  .badge.ok   { background:rgba(70,211,154,.12); color:var(--good); border:1px solid rgba(70,211,154,.3); }
+  .badge.warn { background:rgba(255,180,84,.12);  color:var(--warn); border:1px solid rgba(255,180,84,.3); }
+  .badge.muted{ background:rgba(154,163,178,.08); color:var(--muted);border:1px solid rgba(154,163,178,.15);}
+  .badge.bad  { background:rgba(255,107,107,.12); color:var(--bad);  border:1px solid rgba(255,107,107,.3);}
+
+  /* direção HRV */
   .match-good { color:var(--good); font-weight:700; }
   .match-warn { color:var(--warn); }
-  .match-bad  { color:var(--bad); font-weight:700; }
+  .match-bad  { color:var(--bad);  font-weight:700; }
   .match-pend { color:var(--muted); }
 
-  /* barra de progresso */
-  .progress { height:4px; background:var(--line); border-radius:99px; margin:8px 0; overflow:hidden; }
-  .progress-bar { height:100%; background:var(--accent); border-radius:99px; transition:width .3s; }
-
-  /* sumário */
-  .summary-row { display:flex; justify-content:space-between; margin-top:10px; gap:8px; }
-  .kpi { flex:1; background:#0d1018; border:1px solid var(--line); border-radius:12px;
-         padding:10px; text-align:center; }
-  .kpi-val { font-size:22px; font-weight:800; }
-  .kpi-lbl { font-size:10px; color:var(--muted); margin-top:2px; }
-  .hint { font-size:11px; color:var(--muted); margin-top:6px; line-height:1.5; }
-  details summary { color:var(--muted); font-size:12px; cursor:pointer; }
+  .hint { font-size:11px; color:var(--muted); line-height:1.5; margin-top:6px; }
+  .sep  { border:none; border-top:1px solid var(--line); margin:10px 0; }
+  details summary { color:var(--muted); font-size:11px; cursor:pointer; user-select:none; }
   pre { background:#090b10; border:1px solid var(--line); border-radius:8px; padding:8px;
-        font-size:10px; overflow:auto; max-height:180px; color:#8a94a6;
-        white-space:pre-wrap; word-break:break-all; margin-top:6px; }
-  .dir-legend { display:flex; gap:12px; font-size:11px; color:var(--muted); margin-bottom:8px; }
-  .dir-legend span { display:flex; align-items:center; gap:3px; }
+        font-size:10px; overflow:auto; max-height:160px; color:#8a94a6;
+        white-space:pre-wrap; word-break:break-all; margin-top:5px; }
+
+  .tag { font-size:10px; font-weight:600; padding:2px 7px; border-radius:6px; margin-left:6px; }
+  .tag.ok   { background:rgba(70,211,154,.15); color:var(--good); }
+  .tag.pend { background:rgba(154,163,178,.1);  color:var(--muted); }
+  .tag.warn { background:rgba(255,180,84,.15);  color:var(--warn); }
 </style>
 </head>
 <body>
-<h1>📊 Validação HRV — 7 noites</h1>
-<div class="sub">
-  Compara o HRV noturno do anel (BLE) com o Zepp (já no Reck) nos últimos 7 dias.<br>
-  Pergunta: o anel sobe e desce nos mesmos dias que o Zepp? Se sim, o sinal é confiável.
+
+<div class="header">
+  <div class="conn-dot" id="dot"></div>
+  <h1>Painel do Anel R10</h1>
 </div>
 
 <!-- CONEXÃO -->
 <div class="card">
-  <h2>1 — Conectar anel</h2>
+  <h2>Conexão</h2>
   <p class="hint">Ajustes → Bluetooth → Esquecer R10_F705. Depois conecte aqui.</p>
   <button id="btnConnect">🔗 Conectar R10_F705</button>
   <div id="statusConn" class="status">Aguardando…</div>
 </div>
 
-<!-- PUXAR 7 DIAS -->
+<!-- AÇÕES -->
 <div class="card">
-  <h2>2 — Puxar HRV dos últimos 7 dias</h2>
-  <p class="hint">Puxa daysAgo=0 até daysAgo=6 em sequência. Leva ~30 segundos.</p>
-  <button id="btnPull" disabled>📈 Puxar 7 dias de HRV</button>
-  <div class="progress"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
+  <h2>Puxar dados</h2>
+  <button id="btnAll" disabled>▶️ Tudo de uma vez (recomendado)</button>
+  <div class="progress"><div class="progress-fill" id="prog"></div></div>
   <div id="statusData" class="status">Conecte primeiro.</div>
+  <hr class="sep">
+  <button id="btnHRV7"  class="sec sm" disabled>📈 Só HRV — 7 dias (validação vs Zepp)</button>
+  <button id="btnHR"    class="sec sm" disabled>❤️ Só FC histórica (RHR + FC sono)</button>
+  <button id="btnSleep" class="sec sm" disabled>🌙 Só Sono (big-data)</button>
 </div>
 
-<!-- TABELA COMPARATIVA -->
-<div class="card" id="cardResult" style="display:none">
-  <h2>Comparativo — Anel vs Zepp</h2>
-  <div class="dir-legend">
-    <span><span class="arrow-up">↑</span> subiu vs dia anterior</span>
-    <span><span class="arrow-down">↓</span> desceu</span>
-    <span><span class="arrow-flat">→</span> estável (±5ms)</span>
-  </div>
-  <table class="cmp-table" id="tblCmp">
-    <tr>
-      <th>Data</th>
-      <th class="r">Zepp</th>
-      <th class="r">Anel</th>
-      <th class="r">Δ abs</th>
-      <th>Direção?</th>
-    </tr>
+<!-- RESULTADO: HRV 7 DIAS -->
+<div class="card" id="cardHRV7" style="display:none">
+  <h2>HRV — Comparativo 7 noites <span class="tag ok" id="tagHRV">aguardando</span></h2>
+  <div class="grid2" id="kpiHRV"></div>
+  <div id="badgesHRV"></div>
+  <table>
+    <tr><th>Data</th><th class="r">Zepp</th><th class="r">Anel<br><span style="font-size:9px;color:var(--muted)">(0h–7h)</span></th><th class="r">Δ</th><th>Direção?</th></tr>
+    <tbody id="tblHRV7"></tbody>
   </table>
-  <div class="summary-row" id="summaryRow"></div>
-  <p class="hint" id="verdictText"></p>
-  <button id="btnCopy" class="sec" style="margin-top:10px">📋 Copiar resultado</button>
+  <p class="hint" id="verdictHRV"></p>
+</div>
+
+<!-- RESULTADO: FC / RHR -->
+<div class="card" id="cardHR" style="display:none">
+  <h2>FC histórica <span class="tag ok">✅ D+0</span></h2>
+  <div class="grid3" id="kpiHR"></div>
+  <div id="badgesHR"></div>
+  <details>
+    <summary>Ver todas as leituras (5 em 5 min)</summary>
+    <table><tr><th>Hora</th><th class="r">FC (bpm)</th></tr><tbody id="tblHR"></tbody></table>
+  </details>
+</div>
+
+<!-- RESULTADO: SONO -->
+<div class="card" id="cardSleep" style="display:none">
+  <h2>Sono <span class="tag pend" id="tagSleep">🧪 a verificar</span></h2>
+  <div class="grid3" id="kpiSleep1"></div>
+  <div class="grid3" id="kpiSleep2"></div>
+  <div id="badgesSleep"></div>
+  <details>
+    <summary>Bytes crus do sono (debug)</summary>
+    <pre id="rawSleep"></pre>
+  </details>
+</div>
+
+<!-- COPIAR TUDO -->
+<div class="card" id="cardCopy" style="display:none">
+  <button id="btnCopy" class="sec sm">📋 Copiar tudo (pra mandar pro Claude)</button>
 </div>
 
 <!-- LOG -->
 <div class="card">
   <details>
-    <summary>Log técnico</summary>
+    <summary>Log técnico BLE</summary>
     <pre id="log"></pre>
   </details>
 </div>
 
 <script>
-// ===================== PROTOCOLO COLMI =====================
-const SVC1       = "6e40fff0-b5a3-f393-e0a9-e50e24dcca9e";
-const SVC2       = "de5bf728-d711-4e47-af26-65e3012a5dc7";
-const CHR_WRITE  = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
-const CHR_NOTIFY = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+// ═══════════════════════════════════════════════════════════
+// PROTOCOLO COLMI — portado do PulseLoop (família 6E40)
+// ═══════════════════════════════════════════════════════════
+const SVC1      = "6e40fff0-b5a3-f393-e0a9-e50e24dcca9e";
+const SVC2      = "de5bf728-d711-4e47-af26-65e3012a5dc7";
+const CHR_WRITE = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+const CHR_NTF1  = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+const CHR_CMD   = "de5bf72a-d711-4e47-af26-65e3012a5dc7"; // big-data request (V2)
+const CHR_NTF2  = "de5bf729-d711-4e47-af26-65e3012a5dc7"; // big-data response
 
-let writeChar=null, notifyChar=null, device=null;
+const CMD = { dt:0x01, name:0x04, autoHR:0x16, syncHR:0x15,
+              syncHRV:0x39, autoHRV:0x38, prefW:0x02, bigData:0xBC };
+const STAGE = { light:0x02, deep:0x03, rem:0x04, awake:0x05 };
 
-// ===================== DADOS ZEPP (Base44, últimos 8 dias) =====================
-// Mapeamento: data do check-in → HRV do Zepp
-// A data do check-in = manhã do dia D, reporta a noite D-1 → D
-// daysAgo=0 do anel = noite de ontem → hoje (mesma referência)
-const zeppByDate = {
-  "2026-06-27": 40,  // daysAgo=0
-  "2026-06-26": 51,  // daysAgo=1
-  "2026-06-25": 52,  // daysAgo=2
-  "2026-06-24": 53,  // daysAgo=3
-  "2026-06-23": 71,  // daysAgo=4
-  "2026-06-22": 54,  // daysAgo=5
-  "2026-06-21": 58,  // daysAgo=6
-  "2026-06-20": 54,  // daysAgo=7 (referência extra)
+// ═══════════════════════════════════════════════════════════
+// DADOS ZEPP (Base44) — últimos 7 dias
+// daysAgo=N → data do check-in correspondente
+// ═══════════════════════════════════════════════════════════
+const ZEPP = {
+  "2026-06-27":{ hrv:40, rhr:66 },
+  "2026-06-26":{ hrv:51, rhr:55 },
+  "2026-06-25":{ hrv:52, rhr:56 },
+  "2026-06-24":{ hrv:53, rhr:56 }, // dia 1 anel solto
+  "2026-06-23":{ hrv:71, rhr:58 },
+  "2026-06-22":{ hrv:54, rhr:58 },
+  "2026-06-21":{ hrv:58, rhr:56 },
 };
 
-// daysAgo=N do anel → data do check-in correspondente
-function daysAgoToDate(n) {
-  const d = new Date(); d.setHours(0,0,0,0);
-  d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0,10);
-}
+// ═══════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════
+let writeChar=null, cmdChar=null, ntf1=null, ntf2=null, device=null;
+const ringHRV   = {};   // daysAgo → { minute→hrv }
+let   hrSamples = [];
+let   sleepBuf  = [], sleepExpected = 0;
+let   collectHRV=false, collectHR=false, curDay=-1;
 
-// ===================== ARMAZENAMENTO HRV POR DIA =====================
-// ringHRV[daysAgo] = { minute -> hrv }
-const ringHRV = {};
-let currentDaysAgo = -1;
-let collecting = false;
+// ═══════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════
+const $      = id => document.getElementById(id);
+const logEl  = $("log");
+function log(s){ logEl.textContent+=s+"\n"; logEl.scrollTop=logEl.scrollHeight; }
+function hex(a){ return Array.from(a).map(b=>b.toString(16).padStart(2,"0")).join(" "); }
+const wait   = ms => new Promise(r=>setTimeout(r,ms));
+function setConn(t,c=""){ $("statusConn").textContent=t; $("statusConn").className="status "+c; }
+function setData(t,c=""){ $("statusData").textContent=t; $("statusData").className="status "+c; }
+function prog(p){ $("prog").style.width=p+"%"; }
 
-// Média noturna: janela 00:00–08:00 (minuto 0–480)
-function nightAvg(dayData) {
-  const night = Object.entries(dayData)
-    .filter(([m]) => Number(m) <= 480)
-    .map(([,v]) => v);
-  if (!night.length) return null;
-  return Math.round(night.reduce((a,b)=>a+b,0)/night.length);
-}
-
-// ===================== BLE =====================
-const logEl = document.getElementById("log");
-function log(s){ logEl.textContent += s+"\n"; logEl.scrollTop=logEl.scrollHeight; }
-function hex(arr){ return Array.from(arr).map(b=>b.toString(16).padStart(2,"0")).join(" "); }
-const sleep = ms => new Promise(r=>setTimeout(r,ms));
-function setConn(t,c=""){ const s=document.getElementById("statusConn"); s.textContent=t; s.className="status "+c; }
-function setData(t,c=""){ const s=document.getElementById("statusData"); s.textContent=t; s.className="status "+c; }
-
-function frame(content){
+function frame(c){
   const b=new Uint8Array(16);
-  for(let i=0;i<Math.min(content.length,15);i++) b[i]=content[i];
+  for(let i=0;i<Math.min(c.length,15);i++) b[i]=c[i];
   let cs=0; for(let i=0;i<15;i++) cs=(cs+b[i])&0xff; b[15]=cs; return b;
 }
 function bcd(v){ return ((Math.floor((v%100)/10))<<4)|(v%10); }
-function dateBytes(){
+function dtBytes(){
   const d=new Date();
-  return [0x01,bcd(d.getFullYear()%2000),bcd(d.getMonth()+1),bcd(d.getDate()),bcd(d.getHours()),bcd(d.getMinutes()),bcd(d.getSeconds())];
+  return [CMD.dt,bcd(d.getFullYear()%2000),bcd(d.getMonth()+1),bcd(d.getDate()),
+          bcd(d.getHours()),bcd(d.getMinutes()),bcd(d.getSeconds())];
 }
-function syncHRVCmd(daysAgo){
-  const d=daysAgo>>>0;
-  return [0x39, d&0xff,(d>>8)&0xff,(d>>16)&0xff,(d>>24)&0xff];
+function daysAgoToISO(n){
+  const d=new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate()-n);
+  return d.toISOString().slice(0,10);
 }
+function fmtDate(iso){
+  const days=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+  const d=new Date(iso+"T12:00:00");
+  const [,m,dd]=iso.split("-"); return `${days[d.getDay()]} ${dd}/${m}`;
+}
+function hhmm(mins){
+  mins=((mins%1440)+1440)%1440;
+  return String(Math.floor(mins/60)).padStart(2,"0")+":"+String(mins%60).padStart(2,"0");
+}
+function nightAvg(dayData){
+  const vals=Object.entries(dayData).filter(([m])=>Number(m)<=480).map(([,v])=>v);
+  return vals.length ? Math.round(vals.reduce((a,b)=>a+b)/vals.length) : null;
+}
+function nightPre(dayData){ // 05h-07h = minutos 300-420
+  const vals=Object.entries(dayData).filter(([m])=>Number(m)>=300&&Number(m)<=420).map(([,v])=>v);
+  return vals.length ? Math.round(vals.reduce((a,b)=>a+b)/vals.length) : null;
+}
+function kpi(label,val,unit=""){ return `<div class="kpi"><div class="kpi-lbl">${label}</div><div class="kpi-val">${val}<span class="kpi-unit"> ${unit}</span></div></div>`; }
+function badge(t,cls="muted"){ return `<span class="badge ${cls}">${t}</span>`; }
 
-async function send(content){
-  const f=frame(content);
+async function send(c){
+  const f=frame(c);
   try{ await writeChar.writeValueWithoutResponse(f); }catch{ await writeChar.writeValue(f); }
   log("→ "+hex(f));
 }
+async function sendRaw(c){
+  const b=new Uint8Array(c);
+  try{ await cmdChar.writeValueWithoutResponse(b); }catch{ await cmdChar.writeValue(b); }
+  log("→ raw "+hex(b));
+}
 
-// ===================== CONEXÃO =====================
-document.getElementById("btnConnect").onclick = async () => {
-  if(!navigator.bluetooth){ setConn("Web Bluetooth não disponível.","err"); return; }
+// ═══════════════════════════════════════════════════════════
+// CONEXÃO
+// ═══════════════════════════════════════════════════════════
+$("btnConnect").onclick = async () => {
+  if(!navigator.bluetooth){ setConn("Web Bluetooth indisponível. Use Bluefy (iPhone) ou Chrome/Edge.","err"); return; }
   try{
     setConn("Abrindo Bluetooth…");
-    device = await navigator.bluetooth.requestDevice({
-      acceptAllDevices:true, optionalServices:[SVC1,SVC2]
-    });
+    device = await navigator.bluetooth.requestDevice({ acceptAllDevices:true, optionalServices:[SVC1,SVC2] });
     setConn("Conectando a "+(device.name||"anel")+"…");
+    device.addEventListener("gattserverdisconnected",()=>{ setConn("Desconectado.","err"); $("dot").className="conn-dot"; enableBtns(false); });
     const server = await device.gatt.connect();
-    let svc; try{ svc=await server.getPrimaryService(SVC1); }catch{ svc=await server.getPrimaryService(SVC2); }
-    writeChar  = await svc.getCharacteristic(CHR_WRITE);
-    notifyChar = await svc.getCharacteristic(CHR_NOTIFY);
-    await notifyChar.startNotifications();
-    notifyChar.addEventListener("characteristicvaluechanged", onNotify);
+    let svc1; try{ svc1=await server.getPrimaryService(SVC1); }catch(e){ log("SVC1: "+e); }
+    let svc2; try{ svc2=await server.getPrimaryService(SVC2); }catch(e){ log("SVC2 ausente: "+e); }
+    if(!svc1){ setConn("Serviço V1 não encontrado.","err"); return; }
+    writeChar = await svc1.getCharacteristic(CHR_WRITE);
+    ntf1      = await svc1.getCharacteristic(CHR_NTF1);
+    await ntf1.startNotifications();
+    ntf1.addEventListener("characteristicvaluechanged", onNtf1);
+    if(svc2){
+      try{
+        cmdChar = await svc2.getCharacteristic(CHR_CMD);
+        ntf2    = await svc2.getCharacteristic(CHR_NTF2);
+        await ntf2.startNotifications();
+        ntf2.addEventListener("characteristicvaluechanged", onNtf2);
+        log("SVC2 OK — sono via big-data disponível");
+      }catch(e){ log("SVC2 chars: "+e); }
+    }
+    $("dot").className="conn-dot on";
     setConn("✓ Conectado a "+(device.name||"R10"),"ok");
-    document.getElementById("btnPull").disabled=false;
-    await send([0x04,0x02,0x0a,0x52,0x4b]); await sleep(200);
-    await send(dateBytes());
-  } catch(e){ setConn("Falha: "+e.message,"err"); }
+    enableBtns(true);
+    await send([CMD.name,0x02,0x0a,0x52,0x4b]); await wait(200);
+    await send(dtBytes());
+  }catch(e){ setConn("Falha: "+e.message,"err"); }
 };
+function enableBtns(on){
+  ["btnAll","btnHRV7","btnHR","btnSleep"].forEach(id=>$(id).disabled=!on);
+}
 
-// ===================== DECODE HRV =====================
-function onNotify(ev){
-  const dv=ev.target.value;
-  const b=new Uint8Array(dv.byteLength); for(let i=0;i<dv.byteLength;i++) b[i]=dv.getUint8(i);
+// ═══════════════════════════════════════════════════════════
+// NOTIFICAÇÕES V1 (HRV + FC)
+// ═══════════════════════════════════════════════════════════
+function onNtf1(ev){
+  const b=new Uint8Array(ev.target.value.byteLength);
+  for(let i=0;i<b.length;i++) b[i]=ev.target.value.getUint8(i);
   log("← "+hex(b));
   if(b.length!==16) return;
   let cs=0; for(let i=0;i<15;i++) cs=(cs+b[i])&0xff;
-  if(cs!==b[15]) return;
-  if(b[0]===0x39 && collecting) decodeHRVPage(b);
+  if(cs!==b[15]){ log("  (cksum inválido)"); return; }
+  if(b[0]===CMD.syncHRV && collectHRV) decodeHRVPkt(b);
+  if(b[0]===CMD.syncHR  && collectHR)  decodeHRPkt(b);
 }
 
-function decodeHRVPage(v){
-  const nr=v[1];
-  if(nr===0xff||nr===0) return;
-  if(!ringHRV[currentDaysAgo]) ringHRV[currentDaysAgo]={};
+function decodeHRVPkt(v){
+  const nr=v[1]; if(nr===0xff||nr===0) return;
+  if(!ringHRV[curDay]) ringHRV[curDay]={};
   const start=nr===1?3:2;
-  const minBase=nr===1?0:(12*30+(nr-2)*13*30);
+  const base=nr===1?0:(12*30+(nr-2)*13*30);
   for(let i=start;i<15;i++){
-    const hrv=v[i]; if(hrv===0) continue;
-    const minute=minBase+(i-start)*30;
-    ringHRV[currentDaysAgo][minute]=hrv;
+    const hrv=v[i]; if(!hrv) continue;
+    ringHRV[curDay][base+(i-start)*30]=hrv;
   }
-  updateTableLive();
 }
 
-// ===================== PUXAR 7 DIAS =====================
-document.getElementById("btnPull").onclick = async () => {
-  document.getElementById("btnPull").disabled=true;
-  document.getElementById("cardResult").style.display="block";
-  initTable();
-  for(let d=0; d<=6; d++){
-    ringHRV[d]={};
-    currentDaysAgo=d;
-    collecting=true;
-    const pct=Math.round((d/7)*100);
-    document.getElementById("progressBar").style.width=pct+"%";
-    setData(`Dia ${d+1}/7 — puxando daysAgo=${d}…`);
-    await send(syncHRVCmd(d));
-    await sleep(2200); // espera os pacotes chegarem
-    collecting=false;
+function decodeHRPkt(v){
+  const nr=v[1]; if(nr===0xff||nr===0) return;
+  const start=nr===1?6:2;
+  const base=nr===1?0:(9*5+(nr-2)*13*5);
+  for(let i=start;i<v.length-1;i++){
+    const bpm=v[i]; if(!bpm) continue;
+    hrSamples.push({ minute: base+(i-start)*5, bpm });
   }
-  document.getElementById("progressBar").style.width="100%";
-  setData("7 dias recebidos ✅","ok");
-  renderFinal();
-  document.getElementById("btnPull").disabled=false;
-};
+}
 
-// ===================== RENDER =====================
-const DAYS = [0,1,2,3,4,5,6];
+// ═══════════════════════════════════════════════════════════
+// NOTIFICAÇÕES V2 (SONO big-data)
+// ═══════════════════════════════════════════════════════════
+function onNtf2(ev){
+  const b=new Uint8Array(ev.target.value.byteLength);
+  for(let i=0;i<b.length;i++) b[i]=ev.target.value.getUint8(i);
+  log("← bigdata "+hex(b));
+  if(sleepBuf.length===0 && b[0]===CMD.bigData)
+    sleepExpected=(b[2]|(b[3]<<8))+6;
+  for(const x of b) sleepBuf.push(x);
+  if(sleepExpected>0 && sleepBuf.length>=sleepExpected) decodeSleep();
+}
 
-function initTable(){
-  const tbody = document.getElementById("tblCmp").querySelector("tbody") ||
-                (() => { const t=document.createElement("tbody"); document.getElementById("tblCmp").appendChild(t); return t; })();
-  tbody.innerHTML="";
-  for(const d of DAYS){
-    const date=daysAgoToDate(d);
-    const zepp=zeppByDate[date]??null;
+function decodeSleep(){
+  const v=sleepBuf;
+  $("rawSleep").textContent=Array.from(v).map(b=>b.toString(16).padStart(2,"0")).join(" ");
+  $("cardSleep").style.display="block";
+  if(v.length<8){ showSleepEmpty("buffer curto"); return; }
+  const days=v[6]; if(!days){ showSleepEmpty("0 dias no pacote"); return; }
+  let idx=7; const sessions=[];
+  for(let d=0;d<days;d++){
+    if(idx+5>=v.length) break;
+    const daysAgo=v[idx++], dayBytes=v[idx++];
+    const ss=(v[idx]|(v[idx+1]<<8)); idx+=2;
+    const se=(v[idx]|(v[idx+1]<<8)); idx+=2;
+    const stages=[]; let j=4;
+    while(j<dayBytes && idx+1<v.length){
+      const t=v[idx++], m=v[idx++]; j+=2;
+      if(m>0) stages.push({t,m});
+    }
+    sessions.push({daysAgo,ss,se,stages});
+  }
+  if(!sessions.length){ showSleepEmpty("nenhuma sessão decodificada"); return; }
+  renderSleepSession(sessions[0]);
+}
+
+function showSleepEmpty(why){
+  $("tagSleep").textContent="⚠️ vazio"; $("tagSleep").className="tag warn";
+  $("kpiSleep1").innerHTML=`<div class="kpi" style="grid-column:1/-1"><div class="kpi-lbl">Motivo</div><div class="hint">${why}<br>Se o HRV/FC funcionaram mas o sono não veio, o big-data ainda não processou a noite atual. Tente de novo em 1–2h após acordar.</div></div>`;
+  setData("Sono: "+why,"warn");
+}
+
+function renderSleepSession(s){
+  const start=s.ss>s.se?s.ss-1440:s.ss;
+  const totalMins=s.se-start;
+  const totalH=totalMins/60;
+  let deep=0,rem=0,light=0,awake=0,awakePeriods=0;
+  for(const sg of s.stages){
+    if(sg.t===STAGE.deep)  deep+=sg.m;
+    else if(sg.t===STAGE.rem)   rem+=sg.m;
+    else if(sg.t===STAGE.light) light+=sg.m;
+    else if(sg.t===STAGE.awake){ awake+=sg.m; awakePeriods++; }
+  }
+  const tot=deep+rem+light+awake||1;
+  const deepP=Math.round(deep/tot*100), remP=Math.round(rem/tot*100),
+        lightP=Math.round(light/tot*100), awakeP=Math.round(awake/tot*100);
+  const ok=deep>0||rem>0;
+  $("tagSleep").textContent=ok?"✅ automático":"⚠️ só duração";
+  $("tagSleep").className=ok?"tag ok":"tag warn";
+  $("kpiSleep1").innerHTML=
+    kpi("Duração",totalH.toFixed(1),"h")+
+    kpi("Deitar",hhmm(s.ss))+
+    kpi("Acordar",hhmm(s.se));
+  $("kpiSleep2").innerHTML=
+    kpi("Profundo",deepP,"%")+
+    kpi("REM",remP,"%")+
+    kpi("Despertares",awakePeriods);
+  $("badgesSleep").innerHTML=
+    badge(totalH.toFixed(1)+"h sono","ok")+
+    badge(deepP+"% profundo",deepP>=13?"ok":"warn")+
+    badge(remP+"% REM",remP>=10?"ok":"warn")+
+    badge(awakePeriods+" despertares",awakePeriods<4?"ok":"warn")+
+    (s.daysAgo>0?badge("⚠️ noite D-"+s.daysAgo+" (não hoje!)","warn"):"");
+  setData(ok?"Sono recebido ✅":"Sono recebido (sem estágios)","ok");
+}
+
+// ═══════════════════════════════════════════════════════════
+// RENDER HRV 7 DIAS
+// ═══════════════════════════════════════════════════════════
+function renderHRV7(){
+  $("cardHRV7").style.display="block";
+  const days=[0,1,2,3,4,5,6];
+  const tbody=$("tblHRV7"); tbody.innerHTML="";
+
+  // coleta avgs
+  const avgs={}; days.forEach(d=>{ avgs[d]=nightAvg(ringHRV[d]??{}); });
+
+  // direção (do mais antigo para mais recente)
+  let matchOk=0, matchTotal=0;
+  const dirs={};
+  const ordered=[...days].reverse();
+  for(let i=1;i<ordered.length;i++){
+    const d=ordered[i], dp=ordered[i-1];
+    const iso=daysAgoToISO(d), isop=daysAgoToISO(dp);
+    const z=ZEPP[iso]?.hrv, zp=ZEPP[isop]?.hrv;
+    const a=avgs[d], ap=avgs[dp];
+    if(z==null||zp==null||a==null||ap==null){ dirs[d]={t:"sem dado",c:"match-pend"}; continue; }
+    const dz=z-zp, da=a-ap;
+    const zUp=dz>3, zDn=dz<-3, aUp=da>3, aDn=da<-3;
+    matchTotal++;
+    let t,c;
+    if(!zUp&&!zDn&&!aUp&&!aDn){ t="→ ambos estáveis"; c="match-good"; matchOk++; }
+    else if((zUp&&aUp)||(zDn&&aDn)){ t=`✓ ${zUp?"↑":"↓"}/${aUp?"↑":"↓"} mesma direção`; c="match-good"; matchOk++; }
+    else if(zUp&&aDn||zDn&&aUp){ t=`✗ ${zUp?"↑":"↓"}Z/${aUp?"↑":"↓"}A OPOSTOS`; c="match-bad"; }
+    else { t="~ só um variou"; c="match-warn"; }
+    dirs[d]={t,c};
+  }
+  dirs[ordered[0]]={t:"(referência)",c:"match-pend"};
+
+  for(const d of days){
+    const iso=daysAgoToISO(d);
+    const zepp=ZEPP[iso]?.hrv;
+    const ring=avgs[d];
+    const pre=nightPre(ringHRV[d]??{});
+    const delta=(zepp!=null&&ring!=null)?Math.abs(ring-zepp):null;
     const tr=document.createElement("tr");
-    tr.id="row-"+d;
-    tr.className="pending";
-    tr.innerHTML=`<td>${fmtDate(date)}</td>
-      <td class="r">${zepp??'—'}</td>
-      <td class="r" id="ring-${d}">…</td>
-      <td class="r" id="delta-${d}">—</td>
-      <td id="dir-${d}" class="match-pend">aguardando</td>`;
+    const dir=dirs[d]??{t:"aguardando…",c:"match-pend"};
+    const anelTxt=ring!=null?ring+" ms":"—";
+    const dTxt=delta!=null?delta+" ms":"—";
+    const preTxt=pre!=null?`<br><span style="font-size:9px;color:var(--muted)">pré: ${pre}ms</span>`:"";
+    tr.innerHTML=`<td>${fmtDate(iso)}</td>
+      <td class="r">${zepp!=null?zepp+" ms":"—"}</td>
+      <td class="r">${anelTxt}${preTxt}</td>
+      <td class="r">${dTxt}</td>
+      <td class="${dir.c}" style="font-size:11px">${dir.t}</td>`;
     tbody.appendChild(tr);
   }
-}
 
-function updateTableLive(){
-  const d=currentDaysAgo;
-  const avg=nightAvg(ringHRV[d]??{});
-  if(avg==null) return;
-  const el=document.getElementById("ring-"+d);
-  if(el) el.textContent=avg+" ms";
-  const date=daysAgoToDate(d);
-  const zepp=zeppByDate[date]??null;
-  if(zepp!=null && avg!=null){
-    const delta=Math.abs(avg-zepp);
-    document.getElementById("delta-"+d).textContent=delta+" ms";
-  }
-  const row=document.getElementById("row-"+d);
-  if(row) row.className="";
-}
-
-function renderFinal(){
-  const avgs={};
-  for(const d of DAYS) avgs[d]=nightAvg(ringHRV[d]??{});
-
-  let matchCount=0, totalPairs=0, sumDelta=0;
-  let prevZepp=null, prevRing=null;
-
-  const dirEl=[];
-  for(const d of [...DAYS].reverse()){ // mais antigo → mais recente
-    const date=daysAgoToDate(d);
-    const zepp=zeppByDate[date]??null;
-    const ring=avgs[d];
-    if(zepp==null||ring==null){ dirEl[d]={text:"sem dado",cls:"match-pend"}; continue; }
-    const delta=Math.abs(ring-zepp);
-    sumDelta+=delta; totalPairs++;
-    document.getElementById("delta-"+d).textContent=delta+" ms";
-    document.getElementById("ring-"+d).textContent=ring+" ms";
-
-    // direção: compara com dia anterior (d+1 = dia mais antigo = anterior no tempo)
-    if(prevZepp!=null && prevRing!=null){
-      const zDir=zepp-prevZepp; // positivo = subiu vs dia anterior
-      const rDir=ring-prevRing;
-      const sameDirZ=Math.abs(zDir)>3; // ignora micro-variação <3ms
-      const sameDirR=Math.abs(rDir)>3;
-      let text,cls;
-      if(!sameDirZ && !sameDirR){ text="→ ambos estáveis"; cls="match-good"; matchCount++; }
-      else if(sameDirZ && sameDirR){
-        const zArrow=zDir>0?"↑":"↓", rArrow=rDir>0?"↑":"↓";
-        if((zDir>0)===( rDir>0)){ text=`✓ ${zArrow}/${rArrow} mesma direção`; cls="match-good"; matchCount++; }
-        else { text=`✗ ${zArrow}Z/${rArrow}R direções opostas`; cls="match-bad"; }
-      } else {
-        // um se mexeu, outro não
-        const moved=sameDirZ?"Zepp":"Anel", still=sameDirZ?"Anel":"Zepp";
-        text=`~ só ${moved} variou`; cls="match-warn";
-      }
-      dirEl[d]={text,cls};
-    } else {
-      dirEl[d]={text:"(referência)",cls:"match-pend"};
-    }
-    prevZepp=zepp; prevRing=ring;
-  }
-
-  for(const d of DAYS){
-    const el=document.getElementById("dir-"+d);
-    if(el && dirEl[d]){ el.textContent=dirEl[d].text; el.className=dirEl[d].cls; }
-  }
-
-  const avgDelta=totalPairs>0?Math.round(sumDelta/totalPairs):null;
-  const matchPct=totalPairs>0?Math.round(matchCount/(totalPairs-1)*100):null; // -1 pq referência não conta
-
-  // sumário
-  document.getElementById("summaryRow").innerHTML=`
-    <div class="kpi"><div class="kpi-val">${avgDelta??'—'}<span style="font-size:14px">ms</span></div><div class="kpi-lbl">Desvio médio absoluto</div></div>
-    <div class="kpi"><div class="kpi-val" style="color:var(--${matchPct>=70?'good':matchPct>=50?'warn':'bad'})">${matchPct??'—'}<span style="font-size:14px">%</span></div><div class="kpi-lbl">Dias com mesma direção</div></div>
-  `;
+  // KPIs sumário
+  const pares=days.filter(d=>avgs[d]!=null&&ZEPP[daysAgoToISO(d)]?.hrv!=null);
+  const deltas=pares.map(d=>Math.abs(avgs[d]-ZEPP[daysAgoToISO(d)].hrv));
+  const avgDelta=deltas.length?Math.round(deltas.reduce((a,b)=>a+b)/deltas.length):null;
+  const matchPct=matchTotal?Math.round(matchOk/matchTotal*100):null;
+  const hoje=avgs[0]; const zHoje=ZEPP[daysAgoToISO(0)]?.hrv;
+  $("kpiHRV").innerHTML=
+    kpi("HRV anel (hoje)",hoje!=null?hoje+"ms":"—")+
+    kpi("Zepp (hoje)",zHoje!=null?zHoje+"ms":"—");
+  $("badgesHRV").innerHTML=
+    (matchPct!=null?badge(matchPct+"% mesma direção",matchPct>=70?"ok":matchPct>=50?"warn":"bad"):"")+
+    (avgDelta!=null?badge("Δ médio "+avgDelta+"ms",avgDelta<=8?"ok":avgDelta<=15?"warn":"bad"):"")+
+    badge(pares.length+"/7 dias com dados","muted");
 
   // veredicto
-  let verdict="";
-  if(matchPct==null){ verdict="Dados insuficientes para veredicto."; }
-  else if(matchPct>=80 && avgDelta<=8){ verdict="✅ SINAL CONFIÁVEL. O anel rastreia as mesmas subidas e descidas que o Zepp com desvio pequeno. Pode migrar o HRV para automação via anel."; }
-  else if(matchPct>=60){ verdict="⚠️ SINAL PARCIAL. O anel concorda na direção na maioria dos dias, mas há exceções. Continue monitorando mais 7 dias antes de migrar."; }
-  else { verdict="❌ SINAL DIVERGENTE. O anel e o Zepp discordam na direção com frequência. Pode ser que os sensores medem janelas diferentes, ou que o anel precisa de mais calibração. Não migrar ainda."; }
-  document.getElementById("verdictText").textContent=verdict;
+  let v="";
+  if(matchPct==null) v="Dados insuficientes para veredicto.";
+  else if(matchPct>=80&&avgDelta<=8) v="✅ Sinal confiável — o anel rastreia as mesmas subidas e descidas com desvio pequeno. Pode migrar.";
+  else if(matchPct>=60) v="⚠️ Sinal parcial — concorda na maioria dos dias mas há exceções. Continue monitorando.";
+  else v="❌ Sinal divergente — direções opostas com frequência. Investigar antes de migrar.";
+  $("verdictHRV").textContent=v;
+  $("tagHRV").textContent=matchPct!=null?matchPct+"% concordância":"aguardando";
+  $("tagHRV").className="tag "+(matchPct>=70?"ok":matchPct>=50?"warn":"pend");
 }
 
-function fmtDate(iso){
-  const [,m,d]=iso.split("-");
-  const days=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
-  const dt=new Date(iso+"T12:00:00");
-  return `${days[dt.getDay()]} ${d}/${m}`;
-}
-
-// ===================== COPIAR =====================
-document.getElementById("btnCopy").onclick = async () => {
-  let txt="VALIDAÇÃO HRV 7 DIAS — Anel vs Zepp\n";
-  txt+=new Date().toLocaleString("pt-BR")+"\n\n";
-  txt+="daysAgo | Data       | Zepp | Anel | Δ abs\n";
-  for(const d of DAYS){
-    const date=daysAgoToDate(d);
-    const zepp=zeppByDate[date]??'—';
-    const ring=nightAvg(ringHRV[d]??{})??('' );
-    const delta=typeof zepp==='number'&&ring?Math.abs(ring-zepp):'—';
-    txt+=`${d}       | ${date} | ${zepp}ms | ${ring||'—'}ms | ${delta}ms\n`;
+// ═══════════════════════════════════════════════════════════
+// RENDER FC / RHR
+// ═══════════════════════════════════════════════════════════
+function renderHR(){
+  $("cardHR").style.display="block";
+  if(!hrSamples.length){
+    $("kpiHR").innerHTML=kpi("RHR","—")+ kpi("FC sono","—")+kpi("Leituras","0");
+    setData("FC histórica vazia.","warn"); return;
   }
+  // janela de sono = 21h-09h (minutos ≥1260 ou ≤540)
+  const sono=hrSamples.filter(s=>s.minute>=21*60||s.minute<=9*60);
+  const rhr=sono.length?Math.min(...sono.map(s=>s.bpm)):Math.min(...hrSamples.map(s=>s.bpm));
+  const fcSono=sono.length?Math.round(sono.reduce((a,s)=>a+s.bpm,0)/sono.length):null;
+  $("kpiHR").innerHTML=
+    kpi("RHR (mínimo noturno)",rhr,"bpm")+
+    kpi("FC média sono",fcSono??'—',"bpm")+
+    kpi("Total leituras",hrSamples.length);
+  $("badgesHR").innerHTML=
+    badge(sono.length+" noturnas","ok")+
+    badge("Zepp RHR hoje: "+(ZEPP[daysAgoToISO(0)]?.rhr??'—')+"bpm","muted");
+  const tbody=$("tblHR"); tbody.innerHTML="";
+  for(const s of hrSamples){
+    const hh=String(Math.floor(s.minute/60)).padStart(2,"0"),mm=String(s.minute%60).padStart(2,"0");
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${hh}:${mm}</td><td class="r">${s.bpm}</td>`;
+    tbody.appendChild(tr);
+  }
+  setData("FC recebida ✅","ok");
+}
+
+// ═══════════════════════════════════════════════════════════
+// BOTÕES
+// ═══════════════════════════════════════════════════════════
+async function pullHRV7(){
+  for(let d=0;d<=6;d++){
+    if(!ringHRV[d]) ringHRV[d]={};
+    curDay=d; collectHRV=true;
+    prog(Math.round(d/7*70));
+    setData(`HRV: puxando dia ${d+1}/7…`);
+    await send([CMD.syncHRV, d&0xff,(d>>8)&0xff,(d>>16)&0xff,(d>>24)&0xff]);
+    await wait(2000);
+    collectHRV=false;
+  }
+  renderHRV7();
+}
+
+async function pullHR(){
+  hrSamples=[]; collectHR=true;
+  prog(75); setData("FC histórica: puxando…");
+  const yesterday=new Date(); yesterday.setDate(yesterday.getDate()-1); yesterday.setHours(0,0,0,0);
+  const ts=Math.floor(yesterday.getTime()/1000)>>>0;
+  await send([CMD.syncHR, ts&0xff,(ts>>8)&0xff,(ts>>16)&0xff,(ts>>24)&0xff]);
+  await wait(4000);
+  collectHR=false;
+  renderHR();
+}
+
+async function pullSleep(){
+  if(!cmdChar){ setData("Serviço V2 ausente — sono big-data não disponível neste firmware.","warn"); return; }
+  sleepBuf=[]; sleepExpected=0;
+  prog(90); setData("Sono: puxando big-data…");
+  await sendRaw([0xBC,0x27,0x01,0x00,0xFF,0x00,0xFF]);
+  await wait(6000);
+  if(!sleepBuf.length) showSleepEmpty("nenhum pacote recebido — firmware pode não suportar big-data agora");
+}
+
+$("btnHRV7").onclick  = async () => { await pullHRV7(); $("cardCopy").style.display="block"; };
+$("btnHR").onclick    = async () => { await pullHR();   $("cardCopy").style.display="block"; };
+$("btnSleep").onclick = async () => { await pullSleep(); $("cardCopy").style.display="block"; };
+
+$("btnAll").onclick = async () => {
+  $("btnAll").disabled=true;
+  prog(5); setData("Iniciando sync completo…");
+  await pullHRV7(); await wait(400);
+  await pullHR();   await wait(400);
+  await pullSleep();
+  prog(100); setData("Sync completo ✅","ok");
+  $("cardCopy").style.display="block";
+  $("btnAll").disabled=false;
+};
+
+// ═══════════════════════════════════════════════════════════
+// COPIAR
+// ═══════════════════════════════════════════════════════════
+$("btnCopy").onclick = async () => {
+  let txt="PAINEL ANEL R10 — "+(device?.name||"R10")+"\n"+new Date().toLocaleString("pt-BR")+"\n\n";
+  txt+="=== HRV 7 DIAS ===\n";
+  txt+="daysAgo | Data       | Zepp | Anel | Anel pré(5-7h) | Δ\n";
+  for(let d=0;d<=6;d++){
+    const iso=daysAgoToISO(d);
+    const z=ZEPP[iso]?.hrv??'—';
+    const a=nightAvg(ringHRV[d]??{})?? '—';
+    const p=nightPre(ringHRV[d]??{})?? '—';
+    const delta=(typeof z==='number'&&typeof a==='number')?Math.abs(a-z):'—';
+    txt+=`${d}       | ${iso} | ${z}ms | ${a}ms | ${p}ms | ${delta}ms\n`;
+  }
+  txt+="\n=== FC HISTÓRICA ===\n";
+  hrSamples.forEach(s=>{ const hh=String(Math.floor(s.minute/60)).padStart(2,"0"),mm=String(s.minute%60).padStart(2,"0"); txt+=`${hh}:${mm} = ${s.bpm} bpm\n`; });
+  txt+="\n=== SONO ===\n";
+  txt+=$("kpiSleep1").innerText.replace(/\n+/g," | ")+"\n";
+  txt+=$("kpiSleep2").innerText.replace(/\n+/g," | ")+"\n";
   try{ await navigator.clipboard.writeText(txt); setData("Copiado ✓","ok"); }
   catch{ setData("Copie do log técnico.","warn"); }
 };
