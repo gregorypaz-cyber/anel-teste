@@ -403,6 +403,7 @@ function renderHRV7(){
 
 // ═══ RENDER PAINEL DE CANDIDATOS ═══
 function renderCandidates(){
+  try{
   $("cardCand").style.display="block";
   const days=[0,1,2,3,4,5,6];
   // calcula métricas por candidato
@@ -459,7 +460,7 @@ function renderCandidates(){
     tr.style.background='rgba(167,139,250,.07)';
     const dirCls=rangeCand.dirPct>=70?"match-good":rangeCand.dirPct>=50?"match-warn":"match-bad";
     // Para RANGE: maior = melhor (noite boa tem range maior); Δ não faz sentido em ms vs HRV
-    const rVals=DAYS.map(d=>rangeCand.vals[d]).filter(v=>v!=null);
+    const rVals=days.map(d=>rangeCand.vals[d]).filter(v=>v!=null);
     const rMin=rVals.length?Math.min(...rVals):null;
     const rMax=rVals.length?Math.max(...rVals):null;
     tr.innerHTML=`
@@ -473,7 +474,7 @@ function renderCandidates(){
   // veredicto
   // Range complementar: pega valor de hoje
   const rangeHoje=rangeCand?rangeCand.vals[0]:null;
-  const rangeBom=rangeCand?Math.max(...Object.values(rangeCand.vals).filter(v=>v!=null)):null;
+  const _rbVals=rangeCand?Object.values(rangeCand.vals).filter(v=>v!=null):[];const rangeBom=_rbVals.length?Math.max(..._rbVals):null;
   let rangeMsg="";
   if(rangeHoje!=null&&rangeBom!=null){
     const cor=rangeHoje>=12?"var(--good)":rangeHoje>=8?"var(--warn)":"var(--bad)";
@@ -511,6 +512,7 @@ function renderCandidates(){
   }
   det+="</table><p class='hint'>C6=máx profundo (01h–06h) | RANGE=máx−mín (01h–06h): verde≥12ms, amarelo≥8ms, vermelho&lt;8ms</p>";
   $("candDetail").innerHTML=det;
+  }catch(e){log("renderCandidates ERR: "+e);}
 }
 
 // ═══ RENDER FC ═══
