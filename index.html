@@ -678,8 +678,12 @@ function decodeTemp(){
       for(let hour=0;hour<=23;hour++){
         if(idx+1>=v.length)break;
         const t00=v[idx++],t30=v[idx++];
-        if(t00>0)readings.push({min:hour*60,       c:t00/10.0+20.0});
-        if(t30>0)readings.push({min:hour*60+30,    c:t30/10.0+20.0});
+        // Gate fisiológico: skin temp válida = 33.0–38.5°C
+        // Abaixo de 33°C = anel saiu do dedo (byte baixo não-zero)
+        // Acima de 38.5°C = febre/artefato de movimento
+        const c00=t00/10.0+20.0, c30=t30/10.0+20.0;
+        if(t00>0&&c00>=33.0&&c00<=38.5)readings.push({min:hour*60,    c:c00});
+        if(t30>0&&c30>=33.0&&c30<=38.5)readings.push({min:hour*60+30, c:c30});
         if(idx-6>=length)break;
       }
       if(daysAgo===0)break;
