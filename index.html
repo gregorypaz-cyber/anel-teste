@@ -135,6 +135,7 @@
 <!-- SONO -->
 <div class="card" id="cardSleep" style="display:none">
   <h2>Sono <span class="tag pend" id="tagSleep">🧪 a verificar</span></h2>
+  <div id="badgesSleepAvail" class="hint" style="margin-bottom:8px"></div>
   <div class="grid3" id="kpiSleep1"></div>
   <div class="grid3" id="kpiSleep2"></div>
   <div id="badgesSleep"></div>
@@ -289,14 +290,27 @@ function decodeSleep(){
     sessions.push({daysAgo,ss,se,stages});
   }
   if(!sessions.length){showSleepEmpty("nenhuma sessão");return;}
-  renderSleepSession(sessions[0]);
+  // escolhe HOJE (daysAgo==0); se não houver, a noite mais recente (menor daysAgo)
+  sessions.sort((a,b)=>a.daysAgo-b.daysAgo);
+  const hoje = sessions.find(s=>s.daysAgo===0);
+  renderSleepSession(hoje || sessions[0], sessions);
 }
 function showSleepEmpty(why){
   $("tagSleep").textContent="⚠️ vazio";$("tagSleep").className="tag warn";
   $("kpiSleep1").innerHTML=`<div class="kpi" style="grid-column:1/-1"><div class="kpi-lbl">Motivo</div><div class="hint">${why}<br>Se HRV/FC vieram mas sono não, o big-data ainda não processou a noite. Tente 1–2h após acordar.</div></div>`;
   setData("Sono: "+why,"warn");
 }
-function renderSleepSession(s){
+function renderSleepSession(s, allSessions){
+  // monta badges das noites disponíveis no pacote
+  if(allSessions && allSessions.length){
+    const dispo = allSessions.map(x=>{
+      const lbl = x.daysAgo===0?"hoje":x.daysAgo===1?"ontem":("D-"+x.daysAgo);
+      const dur = ((x.ss>x.se?x.se-(x.ss-1440):x.se-x.ss)/60).toFixed(1);
+      const sel = x.daysAgo===s.daysAgo?"ok":"muted";
+      return badge(lbl+": "+dur+"h",sel);
+    }).join("");
+    $("badgesSleepAvail").innerHTML = "Noites no pacote: "+dispo;
+  }
   const start=s.ss>s.se?s.ss-1440:s.ss, totalMins=s.se-start, totalH=totalMins/60;
   let deep=0,rem=0,light=0,awake=0,ap=0;
   for(const sg of s.stages){
@@ -309,7 +323,7 @@ function renderSleepSession(s){
   $("tagSleep").textContent=ok?"✅ automático":"⚠️ só duração";$("tagSleep").className=ok?"tag ok":"tag warn";
   $("kpiSleep1").innerHTML=kpi("Duração",totalH.toFixed(1),"h")+kpi("Deitar",hhmm(s.ss))+kpi("Acordar",hhmm(s.se));
   $("kpiSleep2").innerHTML=kpi("Profundo",dP,"%")+kpi("REM",rP,"%")+kpi("Despertares",ap);
-  $("badgesSleep").innerHTML=badge(totalH.toFixed(1)+"h sono","ok")+badge(dP+"% profundo",dP>=13?"ok":"warn")+badge(rP+"% REM",rP>=10?"ok":"warn")+(s.daysAgo>0?badge("⚠️ noite D-"+s.daysAgo,"warn"):"");
+  $("badgesSleep").innerHTML=badge(totalH.toFixed(1)+"h sono","ok")+badge(dP+"% profundo",dP>=13?"ok":"warn")+badge(rP+"% REM",rP>=10?"ok":"warn")+(s.daysAgo===0?badge("✅ noite de HOJE","ok"):badge("⚠️ HOJE indisponível — mostrando D-"+s.daysAgo,"warn"));
   setData("Sono recebido ✅","ok");
 }
 
@@ -468,7 +482,7 @@ async function pullHR(){
 async function pullSleep(){
   if(!cmdChar){setData("Serviço V2 ausente — sono não disponível.","warn");return;}
   sleepBuf=[];sleepExpected=0;prog(90);setData("Sono big-data…");
-  await sendRaw([0xBC,0x27,0x01,0x00,0xFF,0x00,0xFF]);await wait(6000);
+  await sendRaw([0xBC,0x27,0x01,0x00,0xFF,0x00,0xFF]);await wait(9000);
   if(!sleepBuf.length)showSleepEmpty("nenhum pacote — firmware pode não suportar agora");
 }
 $("btnHRV7").onclick=async()=>{await pullHRV7();$("cardCopy").style.display="block";};
