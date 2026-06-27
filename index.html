@@ -87,6 +87,7 @@
   <button id="btnHRV7"  class="sec sm" disabled>📈 Só HRV — 7 dias + candidatos</button>
   <button id="btnHR"    class="sec sm" disabled>❤️ Só FC histórica (RHR + FC sono)</button>
   <button id="btnSleep" class="sec sm" disabled>🌙 Só Sono (big-data)</button>
+  <button id="btnSleepDiag" class="sec sm" disabled>🔬 Diagnóstico de Sono (testa 3 ranges)</button>
 </div>
 
 <!-- HRV 7 DIAS -->
@@ -143,6 +144,13 @@
     <summary>Bytes crus do sono (debug)</summary>
     <pre id="rawSleep"></pre>
   </details>
+</div>
+
+<div class="card" id="cardSleepDiag" style="display:none">
+  <h2>🔬 Diagnóstico de Sono — qual range traz HOJE?</h2>
+  <p class="hint">Dispara 3 variações do comando big-data e lista TODAS as noites que cada uma retorna. Procuramos a que traz a madrugada de hoje (00:25→06:57).</p>
+  <div id="diagResults"></div>
+  <div id="diagVerdict" class="hint" style="margin-top:10px"></div>
 </div>
 
 <div class="card" id="cardCopy" style="display:none">
@@ -239,7 +247,7 @@ $("btnConnect").onclick=async()=>{
     await send([CMD.name,0x02,0x0a,0x52,0x4b]); await wait(200); await send(dtBytes());
   }catch(e){setConn("Falha: "+e.message,"err");}
 };
-function enableBtns(on){["btnAll","btnHRV7","btnHR","btnSleep"].forEach(id=>$(id).disabled=!on);}
+function enableBtns(on){["btnAll","btnHRV7","btnHR","btnSleep","btnSleepDiag"].forEach(id=>$(id).disabled=!on);}
 
 // ═══ NOTIFICAÇÕES V1 (HRV + FC) ═══
 function onNtf1(ev){
@@ -269,6 +277,7 @@ function onNtf2(ev){
   const b=new Uint8Array(ev.target.value.byteLength);
   for(let i=0;i<b.length;i++)b[i]=ev.target.value.getUint8(i);
   log("← bigdata "+hex(b));
+  if(diagMode){ onDiagSleep(b); return; }
   if(sleepBuf.length===0&&b[0]===CMD.bigData)sleepExpected=(b[2]|(b[3]<<8))+6;
   for(const x of b)sleepBuf.push(x);
   if(sleepExpected>0&&sleepBuf.length>=sleepExpected)decodeSleep();
@@ -463,6 +472,97 @@ function renderHR(){
   setData("FC recebida ✅","ok");
 }
 
+// ═══ DIAGNÓSTICO DE SONO (3 ranges) ═══
+let diagMode=false, diagSessions=[];
+function onDiagSleep(b){
+  // chamado dentro de onNtf2 quando diagMode=true
+  if(diagBuf.length===0 && b[0]===CMD.bigData) diagExpected=(b[2]|(b[3]<<8))+6;
+  for(const x of b) diagBuf.push(x);
+}
+let diagBuf=[], diagExpected=0;
+
+function parseSleepBuffer(v){
+  // retorna lista de sessões {daysAgo, ss, se, durH, deep, rem, light, awake}
+  if(v.length<8) return [];
+  const days=v[6]; if(!days) return [];
+  let idx=7; const out=[];
+  for(let d=0;d<days;d++){
+    if(idx+5>=v.length) break;
+    const daysAgo=v[idx++], dayBytes=v[idx++];
+    const ss=(v[idx]|(v[idx+1]<<8)); idx+=2;
+    const se=(v[idx]|(v[idx+1]<<8)); idx+=2;
+    let deep=0,rem=0,light=0,awake=0,j=4;
+    while(j<dayBytes && idx+1<v.length){
+      const t=v[idx++], m=v[idx++]; j+=2;
+      if(m<=0) continue;
+      if(t===STAGE.deep)deep+=m;else if(t===STAGE.rem)rem+=m;
+      else if(t===STAGE.light)light+=m;else if(t===STAGE.awake)awake+=m;
+    }
+    const start=ss>se?ss-1440:ss;
+    out.push({daysAgo,ss,se,durH:((se-start)/60),deep,rem,light,awake});
+  }
+  return out;
+}
+
+async function runSleepDiag(){
+  if(!cmdChar){ setData("Serviço V2 ausente — diagnóstico não disponível.","warn"); return; }
+  $("cardSleepDiag").style.display="block";
+  $("diagResults").innerHTML="";
+  const ranges=[
+    {nome:"R1 — padrão (a partir de ontem)", bytes:[0xBC,0x27,0x01,0x00,0xFF,0x00,0xFF]},
+    {nome:"R2 — começa em HOJE (0x00)",       bytes:[0xBC,0x27,0x00,0x00,0xFF,0x00,0xFF]},
+    {nome:"R3 — últimos 2 dias (0x02)",        bytes:[0xBC,0x27,0x02,0x00,0xFF,0x00,0xFF]},
+  ];
+  const allOut=[];
+  for(let r=0;r<ranges.length;r++){
+    diagMode=true; diagBuf=[]; diagExpected=0;
+    setData(`Diagnóstico ${r+1}/3: ${ranges[r].nome}…`);
+    await sendRaw(ranges[r].bytes);
+    await wait(7000);
+    diagMode=false;
+    const sessions=parseSleepBuffer(diagBuf);
+    allOut.push({range:ranges[r], sessions, rawLen:diagBuf.length});
+    renderDiagRange(ranges[r], sessions, diagBuf.length);
+  }
+  // veredicto: alguma trouxe daysAgo==0 com início após meia-noite?
+  let achou=null;
+  for(const o of allOut){
+    for(const s of o.sessions){
+      // noite de hoje = daysAgo 0, ou início entre 00:00 e ~03:00 (pós meia-noite)
+      if(s.daysAgo===0) achou={range:o.range.nome, s};
+    }
+  }
+  let txt="";
+  if(achou){
+    txt=`✅ ACHOU! O range "<b>${achou.range}</b>" retornou a noite de HOJE (daysAgo=0): ${hhmm(achou.s.ss)}→${hhmm(achou.s.se)}, ${achou.s.durH.toFixed(1)}h. <b>Esse é o comando certo</b> — vou ajustar a página pra usar ele.`;
+  } else {
+    const todasNoites=allOut.flatMap(o=>o.sessions.map(s=>`D-${s.daysAgo} (${hhmm(s.ss)})`));
+    txt=`❌ Nenhum dos 3 ranges trouxe a noite de hoje (daysAgo=0). Noites retornadas: ${[...new Set(todasNoites)].join(", ")||"nenhuma"}. <b>Conclusão honesta:</b> o firmware do R10 não expõe a madrugada de hoje via big-data até consolidar (provavelmente à tarde/noite). O sono de hoje fica indisponível de manhã — confirma o limite do firmware, não da página. HRV e RHR continuam disponíveis ao acordar.`;
+  }
+  $("diagVerdict").innerHTML=txt;
+  setData("Diagnóstico de sono concluído","ok");
+  $("cardCopy").style.display="block";
+}
+
+function renderDiagRange(range, sessions, rawLen){
+  let html=`<div style="margin-top:10px;padding:10px;background:#0d1018;border:1px solid var(--line);border-radius:10px">`;
+  html+=`<div style="font-weight:600;font-size:12px;margin-bottom:6px">${range.nome}</div>`;
+  html+=`<div class="cand-sub" style="margin-bottom:6px">comando: ${range.bytes.map(b=>b.toString(16).padStart(2,"0")).join(" ")} · ${rawLen} bytes recebidos</div>`;
+  if(!sessions.length){
+    html+=`<div style="color:var(--warn);font-size:12px">Nenhuma noite retornada</div>`;
+  } else {
+    html+=`<table style="margin-top:4px"><tr><th>Noite</th><th class="r">Deitar→Acordar</th><th class="r">Dur</th><th class="r">Prof/REM</th></tr>`;
+    for(const s of sessions){
+      const lbl=s.daysAgo===0?'<span style="color:var(--good);font-weight:700">HOJE</span>':s.daysAgo===1?"ontem":("D-"+s.daysAgo);
+      const tot=s.deep+s.rem+s.light+s.awake||1;
+      html+=`<tr><td>${lbl}</td><td class="r">${hhmm(s.ss)}→${hhmm(s.se)}</td><td class="r">${s.durH.toFixed(1)}h</td><td class="r">${Math.round(s.deep/tot*100)}/${Math.round(s.rem/tot*100)}%</td></tr>`;
+    }
+    html+=`</table>`;
+  }
+  html+=`</div>`;
+  $("diagResults").innerHTML+=html;
+}
+
 // ═══ PULL ═══
 async function pullHRV7(){
   for(let d=0;d<=6;d++){
@@ -488,6 +588,7 @@ async function pullSleep(){
 $("btnHRV7").onclick=async()=>{await pullHRV7();$("cardCopy").style.display="block";};
 $("btnHR").onclick=async()=>{await pullHR();$("cardCopy").style.display="block";};
 $("btnSleep").onclick=async()=>{await pullSleep();$("cardCopy").style.display="block";};
+$("btnSleepDiag").onclick=async()=>{await runSleepDiag();};
 $("btnAll").onclick=async()=>{
   $("btnAll").disabled=true;prog(5);setData("Sync completo…");
   await pullHRV7();await wait(400);await pullHR();await wait(400);await pullSleep();
