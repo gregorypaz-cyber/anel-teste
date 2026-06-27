@@ -3,213 +3,186 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Prova Anel R10 — Reck</title>
+<title>Validação HRV 7 dias — Reck</title>
 <style>
   :root { --bg:#0f1115; --card:#181b22; --line:#2a2f3a; --txt:#e7eaf0; --muted:#9aa3b2;
           --accent:#4f8cff; --good:#46d39a; --warn:#ffb454; --bad:#ff6b6b; --em:#a78bfa; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   body { margin:0; background:var(--bg); color:var(--txt);
-         font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-         padding:16px; padding-bottom:64px; }
-  h1 { font-size:20px; margin:4px 0 2px; }
-  .sub { color:var(--muted); font-size:13px; margin-bottom:18px; }
+         font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+         padding:14px; padding-bottom:64px; }
+  h1 { font-size:18px; margin:4px 0 2px; }
+  .sub { color:var(--muted); font-size:12px; margin-bottom:16px; line-height:1.5; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:16px;
-          padding:16px; margin-bottom:14px; }
-  h2 { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.08em;
-       color:var(--muted); margin:0 0 12px; }
-  button { width:100%; padding:15px; font-size:15px; font-weight:600; border:none;
-           border-radius:12px; background:var(--accent); color:#fff; margin-top:8px;
-           cursor:pointer; }
+          padding:14px; margin-bottom:12px; }
+  h2 { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.08em;
+       color:var(--muted); margin:0 0 10px; }
+  button { width:100%; padding:14px; font-size:15px; font-weight:600; border:none;
+           border-radius:12px; background:var(--accent); color:#fff; margin-top:8px; cursor:pointer; }
   button.sec { background:#1e222e; color:var(--txt); border:1px solid var(--line); }
-  button.sm  { padding:10px; font-size:13px; border-radius:10px; margin-top:6px; }
-  button:disabled { opacity:.38; cursor:default; }
+  button:disabled { opacity:.38; }
   .status { font-size:13px; margin-top:10px; padding:10px 12px; border-radius:10px;
-            background:#11141a; border:1px solid var(--line); color:var(--muted); word-break:break-word; }
-  .status.ok { color:var(--good); border-color:rgba(70,211,154,.25); }
-  .status.err { color:var(--bad); border-color:rgba(255,107,107,.25); }
+            background:#11141a; border:1px solid var(--line); color:var(--muted); }
+  .status.ok   { color:var(--good); border-color:rgba(70,211,154,.25); }
+  .status.err  { color:var(--bad);  border-color:rgba(255,107,107,.25); }
   .status.warn { color:var(--warn); border-color:rgba(255,180,84,.25); }
 
-  /* resultado */
-  .metric-row { display:flex; align-items:baseline; gap:6px; margin-bottom:8px; }
-  .metric-val { font-size:36px; font-weight:800; letter-spacing:-1px; }
-  .metric-unit { font-size:13px; color:var(--muted); }
-  .badge { display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:600;
-           padding:3px 9px; border-radius:99px; margin-right:4px; margin-bottom:4px; }
-  .badge.ok  { background:rgba(70,211,154,.12); color:var(--good); border:1px solid rgba(70,211,154,.3); }
-  .badge.warn{ background:rgba(255,180,84,.12);  color:var(--warn); border:1px solid rgba(255,180,84,.3); }
-  .badge.muted{background:rgba(154,163,178,.1);  color:var(--muted);border:1px solid rgba(154,163,178,.2);}
-  table { width:100%; border-collapse:collapse; margin-top:10px; font-size:13px; }
-  th,td { text-align:left; padding:6px 4px; border-bottom:1px solid var(--line); }
-  th { color:var(--muted); font-weight:500; font-size:11px; }
-  td.r { text-align:right; font-variant-numeric:tabular-nums; font-family:monospace; }
-  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; }
-  .kpi { background:#0d1018; border:1px solid var(--line); border-radius:12px; padding:12px; }
-  .kpi-label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
-  .kpi-val { font-size:24px; font-weight:800; margin-top:2px; }
-  .kpi-unit { font-size:11px; color:var(--muted); }
-  details { margin-top:8px; }
-  summary { color:var(--muted); font-size:12px; cursor:pointer; user-select:none; }
-  pre { background:#090b10; border:1px solid var(--line); border-radius:10px; padding:10px;
-        font-size:10px; line-height:1.5; overflow:auto; max-height:200px;
-        color:#8a94a6; white-space:pre-wrap; word-break:break-all; margin-top:6px; }
-  .hint { font-size:11px; color:var(--muted); margin-top:8px; line-height:1.5; }
-  .sep { border:none; border-top:1px solid var(--line); margin:14px 0; }
-  .tag-auto { font-size:10px; color:var(--good); background:rgba(70,211,154,.1);
-              border:1px solid rgba(70,211,154,.2); border-radius:6px; padding:1px 6px; }
-  .tag-wait { font-size:10px; color:var(--warn); background:rgba(255,180,84,.1);
-              border:1px solid rgba(255,180,84,.2); border-radius:6px; padding:1px 6px; }
+  /* tabela principal */
+  .cmp-table { width:100%; border-collapse:collapse; margin-top:10px; font-size:13px; }
+  .cmp-table th { text-align:left; padding:5px 6px; border-bottom:2px solid var(--line);
+                  color:var(--muted); font-size:11px; font-weight:600; }
+  .cmp-table td { padding:7px 6px; border-bottom:1px solid var(--line);
+                  font-variant-numeric:tabular-nums; }
+  .cmp-table td.r { text-align:right; }
+  .cmp-table tr.pending td { color:var(--muted); }
+  .arrow-up   { color:var(--good); }
+  .arrow-down { color:var(--bad); }
+  .arrow-flat { color:var(--muted); }
+  .match-good { color:var(--good); font-weight:700; }
+  .match-warn { color:var(--warn); }
+  .match-bad  { color:var(--bad); font-weight:700; }
+  .match-pend { color:var(--muted); }
+
+  /* barra de progresso */
+  .progress { height:4px; background:var(--line); border-radius:99px; margin:8px 0; overflow:hidden; }
+  .progress-bar { height:100%; background:var(--accent); border-radius:99px; transition:width .3s; }
+
+  /* sumário */
+  .summary-row { display:flex; justify-content:space-between; margin-top:10px; gap:8px; }
+  .kpi { flex:1; background:#0d1018; border:1px solid var(--line); border-radius:12px;
+         padding:10px; text-align:center; }
+  .kpi-val { font-size:22px; font-weight:800; }
+  .kpi-lbl { font-size:10px; color:var(--muted); margin-top:2px; }
+  .hint { font-size:11px; color:var(--muted); margin-top:6px; line-height:1.5; }
+  details summary { color:var(--muted); font-size:12px; cursor:pointer; }
+  pre { background:#090b10; border:1px solid var(--line); border-radius:8px; padding:8px;
+        font-size:10px; overflow:auto; max-height:180px; color:#8a94a6;
+        white-space:pre-wrap; word-break:break-all; margin-top:6px; }
+  .dir-legend { display:flex; gap:12px; font-size:11px; color:var(--muted); margin-bottom:8px; }
+  .dir-legend span { display:flex; align-items:center; gap:3px; }
 </style>
 </head>
 <body>
-<h1>🔬 Prova Anel R10</h1>
-<div class="sub">Testa todos os sinais que vão automatizar o check-in do Reck. Sem login, sem gravação.</div>
+<h1>📊 Validação HRV — 7 noites</h1>
+<div class="sub">
+  Compara o HRV noturno do anel (BLE) com o Zepp (já no Reck) nos últimos 7 dias.<br>
+  Pergunta: o anel sobe e desce nos mesmos dias que o Zepp? Se sim, o sinal é confiável.
+</div>
 
 <!-- CONEXÃO -->
 <div class="card">
-  <h2>1 — Conexão</h2>
-  <p class="hint">Feche o QRing, vá em Ajustes → Bluetooth → Esquecer R10_F705. Depois conecte aqui.</p>
+  <h2>1 — Conectar anel</h2>
+  <p class="hint">Ajustes → Bluetooth → Esquecer R10_F705. Depois conecte aqui.</p>
   <button id="btnConnect">🔗 Conectar R10_F705</button>
   <div id="statusConn" class="status">Aguardando…</div>
 </div>
 
-<!-- SINAIS -->
+<!-- PUXAR 7 DIAS -->
 <div class="card">
-  <h2>2 — Puxar todos os sinais da noite</h2>
-  <p class="hint">Rode de manhã, depois de dormir com o anel.</p>
-  <button id="btnHRV"   class="sec" disabled>📈 HRV (já confirmado — puxar de novo)</button>
-  <button id="btnHR"    class="sec" disabled>❤️ FC histórica → RHR + FC no sono</button>
-  <button id="btnSleep" class="sec" disabled>🌙 Sono (duração, profundo, REM, despertares)</button>
-  <button id="btnAll"                disabled>▶️ Puxar TUDO de uma vez</button>
+  <h2>2 — Puxar HRV dos últimos 7 dias</h2>
+  <p class="hint">Puxa daysAgo=0 até daysAgo=6 em sequência. Leva ~30 segundos.</p>
+  <button id="btnPull" disabled>📈 Puxar 7 dias de HRV</button>
+  <div class="progress"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
   <div id="statusData" class="status">Conecte primeiro.</div>
 </div>
 
-<!-- RESULTADO HRV -->
-<div class="card" id="cardHRV" style="display:none">
-  <h2>HRV <span class="tag-auto">✅ automático</span></h2>
-  <div class="metric-row">
-    <div class="metric-val" id="valHRV">—</div>
-    <div class="metric-unit">ms · média noturna</div>
+<!-- TABELA COMPARATIVA -->
+<div class="card" id="cardResult" style="display:none">
+  <h2>Comparativo — Anel vs Zepp</h2>
+  <div class="dir-legend">
+    <span><span class="arrow-up">↑</span> subiu vs dia anterior</span>
+    <span><span class="arrow-down">↓</span> desceu</span>
+    <span><span class="arrow-flat">→</span> estável (±5ms)</span>
   </div>
-  <div id="badgesHRV"></div>
-  <table><tr><th>Hora</th><th class="r">HRV (ms)</th></tr>
-  <tbody id="tblHRV"></tbody></table>
-</div>
-
-<!-- RESULTADO FC / RHR -->
-<div class="card" id="cardHR" style="display:none">
-  <h2>FC histórica <span class="tag-auto">✅ automático</span></h2>
-  <div class="grid2">
-    <div class="kpi">
-      <div class="kpi-label">RHR (mínimo noturno)</div>
-      <div class="kpi-val" id="valRHR">—</div>
-      <div class="kpi-unit">bpm</div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-label">FC média no sono</div>
-      <div class="kpi-val" id="valSleepHR">—</div>
-      <div class="kpi-unit">bpm</div>
-    </div>
-  </div>
-  <div id="badgesHR"></div>
-  <details>
-    <summary>Ver leituras (5 em 5 min)</summary>
-    <table><tr><th>Hora</th><th class="r">FC (bpm)</th></tr>
-    <tbody id="tblHR"></tbody></table>
-  </details>
-</div>
-
-<!-- RESULTADO SONO -->
-<div class="card" id="cardSleep" style="display:none">
-  <h2>Sono <span id="tagSleep" class="tag-wait">🧪 a verificar</span></h2>
-  <div class="grid2">
-    <div class="kpi">
-      <div class="kpi-label">Duração total</div>
-      <div class="kpi-val" id="valDuration">—</div>
-      <div class="kpi-unit">horas</div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-label">Horário de deitar</div>
-      <div class="kpi-val" id="valBedtime" style="font-size:20px">—</div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-label">Sono Profundo</div>
-      <div class="kpi-val" id="valDeep">—</div>
-      <div class="kpi-unit">%</div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-label">Sono REM</div>
-      <div class="kpi-val" id="valREM">—</div>
-      <div class="kpi-unit">%</div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-label">Sono Leve</div>
-      <div class="kpi-val" id="valLight">—</div>
-      <div class="kpi-unit">%</div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-label">Despertares</div>
-      <div class="kpi-val" id="valAwake">—</div>
-      <div class="kpi-unit">períodos</div>
-    </div>
-  </div>
-  <div id="badgesSleep"></div>
-  <details>
-    <summary>Bytes crus do sono (debug)</summary>
-    <pre id="rawSleep"></pre>
-  </details>
-</div>
-
-<!-- COPIAR -->
-<div class="card" id="cardCopy" style="display:none">
-  <button id="btnCopy" class="sec sm">📋 Copiar tudo (pra mandar pro Claude)</button>
+  <table class="cmp-table" id="tblCmp">
+    <tr>
+      <th>Data</th>
+      <th class="r">Zepp</th>
+      <th class="r">Anel</th>
+      <th class="r">Δ abs</th>
+      <th>Direção?</th>
+    </tr>
+  </table>
+  <div class="summary-row" id="summaryRow"></div>
+  <p class="hint" id="verdictText"></p>
+  <button id="btnCopy" class="sec" style="margin-top:10px">📋 Copiar resultado</button>
 </div>
 
 <!-- LOG -->
 <div class="card">
   <details>
-    <summary>Log técnico (pacotes BLE)</summary>
+    <summary>Log técnico</summary>
     <pre id="log"></pre>
   </details>
-  <p class="hint">Se o sono vier vazio mas o HRV e FC funcionarem, o firmware do R10 pode não expor sono via big-data — e aí o sono continua vindo do QRing manualmente. Cada resultado conta.</p>
 </div>
 
 <script>
-// ==================== PROTOCOLO COLMI (portado do PulseLoop) ====================
-const SVC1   = "6e40fff0-b5a3-f393-e0a9-e50e24dcca9e";
-const SVC2   = "de5bf728-d711-4e47-af26-65e3012a5dc7";
-const CHR_WRITE   = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // comandos normais (framed 16 bytes)
-const CHR_NOTIFY1 = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // notificações normais
-const CHR_CMD     = "de5bf72a-d711-4e47-af26-65e3012a5dc7"; // big-data request (raw, svc V2)
-const CHR_NOTIFY2 = "de5bf729-d711-4e47-af26-65e3012a5dc7"; // big-data response
+// ===================== PROTOCOLO COLMI =====================
+const SVC1       = "6e40fff0-b5a3-f393-e0a9-e50e24dcca9e";
+const SVC2       = "de5bf728-d711-4e47-af26-65e3012a5dc7";
+const CHR_WRITE  = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+const CHR_NOTIFY = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
 
-const CMD = { setDateTime:0x01, phoneName:0x04, autoHRPref:0x16,
-              syncHR:0x15, syncHRV:0x39, autoHRVPref:0x38, prefWrite:0x02, bigData:0xBC };
-const SLEEP_TYPE = { light:0x02, deep:0x03, rem:0x04, awake:0x05 };
+let writeChar=null, notifyChar=null, device=null;
 
-let writeChar=null, cmdChar=null, notify1=null, notify2=null, device=null;
-let svc1=null, svc2=null;
-let results = { hrv:{}, hr:[], sleep:null };
+// ===================== DADOS ZEPP (Base44, últimos 8 dias) =====================
+// Mapeamento: data do check-in → HRV do Zepp
+// A data do check-in = manhã do dia D, reporta a noite D-1 → D
+// daysAgo=0 do anel = noite de ontem → hoje (mesma referência)
+const zeppByDate = {
+  "2026-06-27": 40,  // daysAgo=0
+  "2026-06-26": 51,  // daysAgo=1
+  "2026-06-25": 52,  // daysAgo=2
+  "2026-06-24": 53,  // daysAgo=3
+  "2026-06-23": 71,  // daysAgo=4
+  "2026-06-22": 54,  // daysAgo=5
+  "2026-06-21": 58,  // daysAgo=6
+  "2026-06-20": 54,  // daysAgo=7 (referência extra)
+};
 
-// ---- helpers BLE ----
-const $ = id => document.getElementById(id);
-const logEl = $("log");
-function log(s){ logEl.textContent += s + "\n"; logEl.scrollTop = logEl.scrollHeight; }
+// daysAgo=N do anel → data do check-in correspondente
+function daysAgoToDate(n) {
+  const d = new Date(); d.setHours(0,0,0,0);
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0,10);
+}
+
+// ===================== ARMAZENAMENTO HRV POR DIA =====================
+// ringHRV[daysAgo] = { minute -> hrv }
+const ringHRV = {};
+let currentDaysAgo = -1;
+let collecting = false;
+
+// Média noturna: janela 00:00–08:00 (minuto 0–480)
+function nightAvg(dayData) {
+  const night = Object.entries(dayData)
+    .filter(([m]) => Number(m) <= 480)
+    .map(([,v]) => v);
+  if (!night.length) return null;
+  return Math.round(night.reduce((a,b)=>a+b,0)/night.length);
+}
+
+// ===================== BLE =====================
+const logEl = document.getElementById("log");
+function log(s){ logEl.textContent += s+"\n"; logEl.scrollTop=logEl.scrollHeight; }
 function hex(arr){ return Array.from(arr).map(b=>b.toString(16).padStart(2,"0")).join(" "); }
-function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
-function setConn(t,c=""){ const s=$("statusConn"); s.textContent=t; s.className="status "+c; }
-function setData(t,c=""){ const s=$("statusData"); s.textContent=t; s.className="status "+c; }
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+function setConn(t,c=""){ const s=document.getElementById("statusConn"); s.textContent=t; s.className="status "+c; }
+function setData(t,c=""){ const s=document.getElementById("statusData"); s.textContent=t; s.className="status "+c; }
 
-// monta frame 16 bytes: 15 de conteúdo + checksum = Σ & 0xff
 function frame(content){
-  const b = new Uint8Array(16);
+  const b=new Uint8Array(16);
   for(let i=0;i<Math.min(content.length,15);i++) b[i]=content[i];
   let cs=0; for(let i=0;i<15;i++) cs=(cs+b[i])&0xff; b[15]=cs; return b;
 }
 function bcd(v){ return ((Math.floor((v%100)/10))<<4)|(v%10); }
 function dateBytes(){
   const d=new Date();
-  return [CMD.setDateTime,bcd(d.getFullYear()%2000),bcd(d.getMonth()+1),
-          bcd(d.getDate()),bcd(d.getHours()),bcd(d.getMinutes()),bcd(d.getSeconds())];
+  return [0x01,bcd(d.getFullYear()%2000),bcd(d.getMonth()+1),bcd(d.getDate()),bcd(d.getHours()),bcd(d.getMinutes()),bcd(d.getSeconds())];
+}
+function syncHRVCmd(daysAgo){
+  const d=daysAgo>>>0;
+  return [0x39, d&0xff,(d>>8)&0xff,(d>>16)&0xff,(d>>24)&0xff];
 }
 
 async function send(content){
@@ -217,293 +190,198 @@ async function send(content){
   try{ await writeChar.writeValueWithoutResponse(f); }catch{ await writeChar.writeValue(f); }
   log("→ "+hex(f));
 }
-async function sendRaw(content){ // big-data: raw, sem frame, no CHR_CMD
-  const b=new Uint8Array(content);
-  try{ await cmdChar.writeValueWithoutResponse(b); }catch{ await cmdChar.writeValue(b); }
-  log("→ raw "+hex(b));
-}
 
-// ==================== CONEXÃO ====================
-$("btnConnect").onclick = async () => {
-  if(!navigator.bluetooth){
-    setConn("Web Bluetooth não disponível. Use Bluefy (iPhone) ou Chrome/Edge.","err"); return;
-  }
+// ===================== CONEXÃO =====================
+document.getElementById("btnConnect").onclick = async () => {
+  if(!navigator.bluetooth){ setConn("Web Bluetooth não disponível.","err"); return; }
   try{
-    setConn("Abrindo seletor Bluetooth…");
+    setConn("Abrindo Bluetooth…");
     device = await navigator.bluetooth.requestDevice({
-      acceptAllDevices:true, optionalServices:[SVC1, SVC2]
+      acceptAllDevices:true, optionalServices:[SVC1,SVC2]
     });
     setConn("Conectando a "+(device.name||"anel")+"…");
-    device.addEventListener("gattserverdisconnected", ()=>{ setConn("Desconectado.","err"); disableButtons(); });
     const server = await device.gatt.connect();
-
-    // tenta V1 (obrigatório)
-    try{ svc1 = await server.getPrimaryService(SVC1); } catch(e){ log("SVC1 não encontrado: "+e); }
-    // tenta V2 (opcional — necessário para sono)
-    try{ svc2 = await server.getPrimaryService(SVC2); } catch(e){ log("SVC2 não encontrado (sono indisponível): "+e); }
-
-    if(!svc1){ setConn("Serviço V1 não encontrado — anel incompatível?","err"); return; }
-
-    writeChar = await svc1.getCharacteristic(CHR_WRITE);
-    notify1   = await svc1.getCharacteristic(CHR_NOTIFY1);
-    await notify1.startNotifications();
-    notify1.addEventListener("characteristicvaluechanged", onNotify1);
-
-    if(svc2){
-      try{
-        cmdChar = await svc2.getCharacteristic(CHR_CMD);
-        notify2 = await svc2.getCharacteristic(CHR_NOTIFY2);
-        await notify2.startNotifications();
-        notify2.addEventListener("characteristicvaluechanged", onNotify2);
-        log("SVC2 OK — sono disponível");
-      } catch(e){ log("SVC2 chars não encontrados: "+e); }
-    }
-
-    setConn("✓ Conectado a "+(device.name||"R10"), "ok");
-    enableButtons();
-    // handshake inicial
-    await send([CMD.phoneName,0x02,0x0a,0x52,0x4b]); // "RK" (Reck)
-    await sleep(200);
+    let svc; try{ svc=await server.getPrimaryService(SVC1); }catch{ svc=await server.getPrimaryService(SVC2); }
+    writeChar  = await svc.getCharacteristic(CHR_WRITE);
+    notifyChar = await svc.getCharacteristic(CHR_NOTIFY);
+    await notifyChar.startNotifications();
+    notifyChar.addEventListener("characteristicvaluechanged", onNotify);
+    setConn("✓ Conectado a "+(device.name||"R10"),"ok");
+    document.getElementById("btnPull").disabled=false;
+    await send([0x04,0x02,0x0a,0x52,0x4b]); await sleep(200);
     await send(dateBytes());
-  } catch(e){ setConn("Falha: "+e.message,"err"); log("ERR: "+e); }
+  } catch(e){ setConn("Falha: "+e.message,"err"); }
 };
 
-function enableButtons(){ [$("btnHRV"),$("btnHR"),$("btnSleep"),$("btnAll")].forEach(b=>b.disabled=false); }
-function disableButtons(){ [$("btnHRV"),$("btnHR"),$("btnSleep"),$("btnAll")].forEach(b=>b.disabled=true); }
-
-// ==================== NOTIFICAÇÕES V1 (HRV + FC) ====================
-let collectHRV=false, collectHR=false;
-let hrSamples=[];
-
-function onNotify1(ev){
+// ===================== DECODE HRV =====================
+function onNotify(ev){
   const dv=ev.target.value;
   const b=new Uint8Array(dv.byteLength); for(let i=0;i<dv.byteLength;i++) b[i]=dv.getUint8(i);
   log("← "+hex(b));
   if(b.length!==16) return;
   let cs=0; for(let i=0;i<15;i++) cs=(cs+b[i])&0xff;
-  if(cs!==b[15]){ log("  (cksum inválido)"); return; }
-  if(b[0]===CMD.syncHRV && collectHRV) decodeHRVPage(b);
-  if(b[0]===CMD.syncHR  && collectHR)  decodeHRPage(b);
+  if(cs!==b[15]) return;
+  if(b[0]===0x39 && collecting) decodeHRVPage(b);
 }
 
-// ---- HRV ----
 function decodeHRVPage(v){
-  const nr=v[1]; if(nr===0xff||nr===0) return;
+  const nr=v[1];
+  if(nr===0xff||nr===0) return;
+  if(!ringHRV[currentDaysAgo]) ringHRV[currentDaysAgo]={};
   const start=nr===1?3:2;
-  let minBase=nr===1?0:(12*30+(nr-2)*13*30);
+  const minBase=nr===1?0:(12*30+(nr-2)*13*30);
   for(let i=start;i<15;i++){
     const hrv=v[i]; if(hrv===0) continue;
     const minute=minBase+(i-start)*30;
-    results.hrv[minute]=hrv;
+    ringHRV[currentDaysAgo][minute]=hrv;
+  }
+  updateTableLive();
+}
+
+// ===================== PUXAR 7 DIAS =====================
+document.getElementById("btnPull").onclick = async () => {
+  document.getElementById("btnPull").disabled=true;
+  document.getElementById("cardResult").style.display="block";
+  initTable();
+  for(let d=0; d<=6; d++){
+    ringHRV[d]={};
+    currentDaysAgo=d;
+    collecting=true;
+    const pct=Math.round((d/7)*100);
+    document.getElementById("progressBar").style.width=pct+"%";
+    setData(`Dia ${d+1}/7 — puxando daysAgo=${d}…`);
+    await send(syncHRVCmd(d));
+    await sleep(2200); // espera os pacotes chegarem
+    collecting=false;
+  }
+  document.getElementById("progressBar").style.width="100%";
+  setData("7 dias recebidos ✅","ok");
+  renderFinal();
+  document.getElementById("btnPull").disabled=false;
+};
+
+// ===================== RENDER =====================
+const DAYS = [0,1,2,3,4,5,6];
+
+function initTable(){
+  const tbody = document.getElementById("tblCmp").querySelector("tbody") ||
+                (() => { const t=document.createElement("tbody"); document.getElementById("tblCmp").appendChild(t); return t; })();
+  tbody.innerHTML="";
+  for(const d of DAYS){
+    const date=daysAgoToDate(d);
+    const zepp=zeppByDate[date]??null;
+    const tr=document.createElement("tr");
+    tr.id="row-"+d;
+    tr.className="pending";
+    tr.innerHTML=`<td>${fmtDate(date)}</td>
+      <td class="r">${zepp??'—'}</td>
+      <td class="r" id="ring-${d}">…</td>
+      <td class="r" id="delta-${d}">—</td>
+      <td id="dir-${d}" class="match-pend">aguardando</td>`;
+    tbody.appendChild(tr);
   }
 }
 
-// ---- FC histórica ----
-function decodeHRPage(v){
-  const nr=v[1]; if(nr===0xff||nr===0) return;
-  const start=nr===1?6:2;
-  let minBase=nr===1?0:(9*5+(nr-2)*13*5);
-  for(let i=start;i<v.length-1;i++){
-    const bpm=v[i]; if(bpm===0) continue;
-    const minute=minBase+(i-start)*5;
-    hrSamples.push({minute,bpm});
+function updateTableLive(){
+  const d=currentDaysAgo;
+  const avg=nightAvg(ringHRV[d]??{});
+  if(avg==null) return;
+  const el=document.getElementById("ring-"+d);
+  if(el) el.textContent=avg+" ms";
+  const date=daysAgoToDate(d);
+  const zepp=zeppByDate[date]??null;
+  if(zepp!=null && avg!=null){
+    const delta=Math.abs(avg-zepp);
+    document.getElementById("delta-"+d).textContent=delta+" ms";
   }
+  const row=document.getElementById("row-"+d);
+  if(row) row.className="";
 }
 
-// ==================== NOTIFICAÇÕES V2 (SONO big-data) ====================
-let sleepBuf=[];
-let sleepExpected=0;
-function onNotify2(ev){
-  const dv=ev.target.value;
-  const b=new Uint8Array(dv.byteLength); for(let i=0;i<dv.byteLength;i++) b[i]=dv.getUint8(i);
-  log("← bigdata "+hex(b));
-  if(sleepBuf.length===0 && b[0]===CMD.bigData){
-    const len=(b[2]|(b[3]<<8))+6;
-    sleepExpected=len;
-  }
-  for(const byte of b) sleepBuf.push(byte);
-  if(sleepBuf.length>=sleepExpected && sleepExpected>0) decodeSleepBuffer();
-}
+function renderFinal(){
+  const avgs={};
+  for(const d of DAYS) avgs[d]=nightAvg(ringHRV[d]??{});
 
-function decodeSleepBuffer(){
-  const v=sleepBuf;
-  log("Sono buffer completo: "+v.length+" bytes");
-  $("rawSleep").textContent = Array.from(v).map(b=>b.toString(16).padStart(2,"0")).join(" ");
-  $("cardSleep").style.display="block";
-  if(v.length<8){ showSleepEmpty("Buffer de sono muito curto"); return; }
-  const packetLen=(v[2]|(v[3]<<8));
-  if(packetLen<2){ showSleepEmpty("Payload vazio"); return; }
-  const daysInPacket=v[6];
-  if(daysInPacket===0){ showSleepEmpty("0 dias no pacote de sono"); return; }
-  let idx=7;
-  const sessions=[];
-  for(let d=0;d<daysInPacket;d++){
-    if(idx+5>=v.length) break;
-    const daysAgo=v[idx++];
-    const dayBytes=v[idx++];
-    const sleepStart=(v[idx]|(v[idx+1]<<8)); idx+=2;
-    const sleepEnd  =(v[idx]|(v[idx+1]<<8)); idx+=2;
-    const stages=[];
-    let j=4;
-    while(j<dayBytes && idx+1<v.length){
-      const type=v[idx++], mins=v[idx++]; j+=2;
-      if(mins>0) stages.push({type,mins});
+  let matchCount=0, totalPairs=0, sumDelta=0;
+  let prevZepp=null, prevRing=null;
+
+  const dirEl=[];
+  for(const d of [...DAYS].reverse()){ // mais antigo → mais recente
+    const date=daysAgoToDate(d);
+    const zepp=zeppByDate[date]??null;
+    const ring=avgs[d];
+    if(zepp==null||ring==null){ dirEl[d]={text:"sem dado",cls:"match-pend"}; continue; }
+    const delta=Math.abs(ring-zepp);
+    sumDelta+=delta; totalPairs++;
+    document.getElementById("delta-"+d).textContent=delta+" ms";
+    document.getElementById("ring-"+d).textContent=ring+" ms";
+
+    // direção: compara com dia anterior (d+1 = dia mais antigo = anterior no tempo)
+    if(prevZepp!=null && prevRing!=null){
+      const zDir=zepp-prevZepp; // positivo = subiu vs dia anterior
+      const rDir=ring-prevRing;
+      const sameDirZ=Math.abs(zDir)>3; // ignora micro-variação <3ms
+      const sameDirR=Math.abs(rDir)>3;
+      let text,cls;
+      if(!sameDirZ && !sameDirR){ text="→ ambos estáveis"; cls="match-good"; matchCount++; }
+      else if(sameDirZ && sameDirR){
+        const zArrow=zDir>0?"↑":"↓", rArrow=rDir>0?"↑":"↓";
+        if((zDir>0)===( rDir>0)){ text=`✓ ${zArrow}/${rArrow} mesma direção`; cls="match-good"; matchCount++; }
+        else { text=`✗ ${zArrow}Z/${rArrow}R direções opostas`; cls="match-bad"; }
+      } else {
+        // um se mexeu, outro não
+        const moved=sameDirZ?"Zepp":"Anel", still=sameDirZ?"Anel":"Zepp";
+        text=`~ só ${moved} variou`; cls="match-warn";
+      }
+      dirEl[d]={text,cls};
+    } else {
+      dirEl[d]={text:"(referência)",cls:"match-pend"};
     }
-    sessions.push({daysAgo,sleepStart,sleepEnd,stages});
+    prevZepp=zepp; prevRing=ring;
   }
-  if(sessions.length===0){ showSleepEmpty("Nenhuma sessão decodificada"); return; }
-  renderSleep(sessions[0]); // mostra a noite mais recente
+
+  for(const d of DAYS){
+    const el=document.getElementById("dir-"+d);
+    if(el && dirEl[d]){ el.textContent=dirEl[d].text; el.className=dirEl[d].cls; }
+  }
+
+  const avgDelta=totalPairs>0?Math.round(sumDelta/totalPairs):null;
+  const matchPct=totalPairs>0?Math.round(matchCount/(totalPairs-1)*100):null; // -1 pq referência não conta
+
+  // sumário
+  document.getElementById("summaryRow").innerHTML=`
+    <div class="kpi"><div class="kpi-val">${avgDelta??'—'}<span style="font-size:14px">ms</span></div><div class="kpi-lbl">Desvio médio absoluto</div></div>
+    <div class="kpi"><div class="kpi-val" style="color:var(--${matchPct>=70?'good':matchPct>=50?'warn':'bad'})">${matchPct??'—'}<span style="font-size:14px">%</span></div><div class="kpi-lbl">Dias com mesma direção</div></div>
+  `;
+
+  // veredicto
+  let verdict="";
+  if(matchPct==null){ verdict="Dados insuficientes para veredicto."; }
+  else if(matchPct>=80 && avgDelta<=8){ verdict="✅ SINAL CONFIÁVEL. O anel rastreia as mesmas subidas e descidas que o Zepp com desvio pequeno. Pode migrar o HRV para automação via anel."; }
+  else if(matchPct>=60){ verdict="⚠️ SINAL PARCIAL. O anel concorda na direção na maioria dos dias, mas há exceções. Continue monitorando mais 7 dias antes de migrar."; }
+  else { verdict="❌ SINAL DIVERGENTE. O anel e o Zepp discordam na direção com frequência. Pode ser que os sensores medem janelas diferentes, ou que o anel precisa de mais calibração. Não migrar ainda."; }
+  document.getElementById("verdictText").textContent=verdict;
 }
 
-function showSleepEmpty(reason){
-  setData("Sono: "+reason+" — veja os bytes crus para diagnóstico.","warn");
-  $("tagSleep").textContent="⚠️ sem dado"; $("tagSleep").className="tag-wait";
+function fmtDate(iso){
+  const [,m,d]=iso.split("-");
+  const days=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+  const dt=new Date(iso+"T12:00:00");
+  return `${days[dt.getDay()]} ${d}/${m}`;
 }
 
-function renderSleep(s){
-  // horas dormindo: cross-midnight → start pode ser > end (ex: 23h30 → 330 min → sleepStart=1410>sleepEnd=390)
-  const start=s.sleepStart>s.sleepEnd ? s.sleepStart-1440 : s.sleepStart;
-  const totalMins=s.sleepEnd-start;
-  const totalH=totalMins/60;
-
-  let deep=0,rem=0,light=0,awake=0,awakePeriods=0;
-  for(const sg of s.stages){
-    if(sg.type===SLEEP_TYPE.deep)  deep+=sg.mins;
-    else if(sg.type===SLEEP_TYPE.rem)   rem+=sg.mins;
-    else if(sg.type===SLEEP_TYPE.light) light+=sg.mins;
-    else if(sg.type===SLEEP_TYPE.awake){ awake+=sg.mins; awakePeriods++; }
+// ===================== COPIAR =====================
+document.getElementById("btnCopy").onclick = async () => {
+  let txt="VALIDAÇÃO HRV 7 DIAS — Anel vs Zepp\n";
+  txt+=new Date().toLocaleString("pt-BR")+"\n\n";
+  txt+="daysAgo | Data       | Zepp | Anel | Δ abs\n";
+  for(const d of DAYS){
+    const date=daysAgoToDate(d);
+    const zepp=zeppByDate[date]??'—';
+    const ring=nightAvg(ringHRV[d]??{})??('' );
+    const delta=typeof zepp==='number'&&ring?Math.abs(ring-zepp):'—';
+    txt+=`${d}       | ${date} | ${zepp}ms | ${ring||'—'}ms | ${delta}ms\n`;
   }
-  const scored=deep+rem+light+awake||1;
-  const deepPct=Math.round(deep/scored*100), remPct=Math.round(rem/scored*100),
-        lightPct=Math.round(light/scored*100);
-
-  const hh=m=>String(Math.floor(((m+1440)%1440)/60)).padStart(2,"0")+":"+String((m+1440)%60).padStart(2,"0");
-
-  $("valDuration").textContent=totalH.toFixed(1);
-  $("valBedtime").textContent=hh(s.sleepStart);
-  $("valDeep").textContent=deepPct;
-  $("valREM").textContent=remPct;
-  $("valLight").textContent=lightPct;
-  $("valAwake").textContent=awakePeriods;
-
-  const ok=deep>0||rem>0;
-  $("tagSleep").textContent=ok?"✅ automático":"⚠️ só duração";
-  $("tagSleep").className=ok?"tag-auto":"tag-wait";
-  $("badgesSleep").innerHTML=
-    badge(totalH.toFixed(1)+"h sono","ok")+
-    badge(deepPct+"% profundo", deepPct>=10?"ok":"warn")+
-    badge(remPct+"% REM", remPct>=10?"ok":"warn")+
-    badge(awakePeriods+" despertares",awakePeriods<5?"ok":"warn");
-
-  results.sleep={totalH,bedtime:hh(s.sleepStart),wake:hh(s.sleepEnd),deepPct,remPct,lightPct,awakePeriods};
-  setData("Sono recebido ✅","ok");
-}
-
-// ==================== BOTÕES ====================
-$("btnHRV").onclick = async () => {
-  results.hrv={}; collectHRV=true;
-  setData("Pedindo HRV (hoje + ontem)…");
-  await send([CMD.syncHRV,0,0,0,0]); await sleep(2500);
-  await send([CMD.syncHRV,1,0,0,0]); await sleep(2500);
-  collectHRV=false;
-  renderHRV();
-};
-
-$("btnHR").onclick = async () => {
-  hrSamples=[]; collectHR=true;
-  setData("Pedindo FC histórica (últimas 24h)…");
-  // pede a partir de ontem meia-noite
-  const yesterday=new Date(); yesterday.setDate(yesterday.getDate()-1); yesterday.setHours(0,0,0,0);
-  const ts=Math.floor(yesterday.getTime()/1000)>>>0;
-  await send([CMD.syncHR, ts&0xff, (ts>>8)&0xff, (ts>>16)&0xff, (ts>>24)&0xff]);
-  await sleep(4000);
-  collectHR=false;
-  renderHR();
-};
-
-$("btnSleep").onclick = async () => {
-  if(!cmdChar){ setData("Serviço V2 não disponível neste anel — sono via big-data não suportado. HRV e FC funcionam normalmente.","warn"); return; }
-  sleepBuf=[]; sleepExpected=0;
-  setData("Pedindo dados de sono…");
-  // big-data sleep: [0xBC, 0x27, 0x01, 0x00, 0xFF, 0x00, 0xFF] — vai no CHR_CMD, sem frame
-  await sendRaw([0xBC,0x27,0x01,0x00,0xFF,0x00,0xFF]);
-  await sleep(5000); // big-data leva mais tempo
-  if(sleepBuf.length===0) showSleepEmpty("Nenhum pacote recebido — firmware pode não suportar big-data");
-};
-
-$("btnAll").onclick = async () => {
-  await $("btnHRV").onclick();
-  await sleep(500);
-  await $("btnHR").onclick();
-  await sleep(500);
-  await $("btnSleep").onclick();
-  $("cardCopy").style.display="block";
-};
-
-// ==================== RENDER ====================
-function badge(t,type="muted"){ return `<span class="badge ${type}">${t}</span>`; }
-
-function renderHRV(){
-  const mins=Object.keys(results.hrv).map(Number).sort((a,b)=>a-b);
-  $("cardHRV").style.display="block";
-  if(mins.length===0){ $("valHRV").textContent="vazio"; return; }
-  const night=mins.filter(m=>m<=8*60).map(m=>results.hrv[m]);
-  const avg=night.length?Math.round(night.reduce((a,b)=>a+b)/night.length):null;
-  $("valHRV").textContent=avg??mins.map(m=>results.hrv[m]).reduce((a,b)=>a+b)/mins.length|0;
-  $("badgesHRV").innerHTML=badge(mins.length+" leituras","ok")+badge(night.length+" noturnas",night.length>=4?"ok":"warn");
-  const tbody=$("tblHRV"); tbody.innerHTML="";
-  for(const m of mins){
-    const hh=String(Math.floor(m/60)).padStart(2,"0"),mm=String(m%60).padStart(2,"0");
-    const tr=document.createElement("tr");
-    tr.innerHTML=`<td>${hh}:${mm}</td><td class="r">${results.hrv[m]}</td>`;
-    tbody.appendChild(tr);
-  }
-  setData("HRV recebido ✅","ok");
-}
-
-function renderHR(){
-  $("cardHR").style.display="block";
-  if(hrSamples.length===0){
-    $("valRHR").textContent="vazio"; $("valSleepHR").textContent="—";
-    setData("FC histórica vazia — firmware pode não suportar.","warn"); return;
-  }
-  // janela de sono = 21h a 09h (pega o mínimo e média)
-  const sleepWindow=hrSamples.filter(s=>{
-    const h=Math.floor(s.minute/60);
-    return h>=21||h<9; // 21h–09h
-  });
-  const rhr=sleepWindow.length?Math.min(...sleepWindow.map(s=>s.bpm)):Math.min(...hrSamples.map(s=>s.bpm));
-  const sleepMean=sleepWindow.length?Math.round(sleepWindow.map(s=>s.bpm).reduce((a,b)=>a+b)/sleepWindow.length):null;
-  $("valRHR").textContent=rhr;
-  $("valSleepHR").textContent=sleepMean??"—";
-  $("badgesHR").innerHTML=badge(hrSamples.length+" leituras","ok")+badge(sleepWindow.length+" noturnas",sleepWindow.length>4?"ok":"warn");
-  const tbody=$("tblHR"); tbody.innerHTML="";
-  for(const s of hrSamples){
-    const hh=String(Math.floor(s.minute/60)).padStart(2,"0"),mm=String(s.minute%60).padStart(2,"0");
-    const tr=document.createElement("tr");
-    tr.innerHTML=`<td>${hh}:${mm}</td><td class="r">${s.bpm}</td>`;
-    tbody.appendChild(tr);
-  }
-  setData("FC recebida ✅","ok");
-}
-
-// ==================== COPIAR ====================
-$("btnCopy").onclick = async () => {
-  let txt="PROVA ANEL R10 — "+(device?.name||"R10")+"\n";
-  txt+="Data: "+new Date().toLocaleString("pt-BR")+"\n\n";
-  txt+="=== HRV ===\n";
-  for(const [m,v] of Object.entries(results.hrv)){
-    const hh=String(Math.floor(m/60)).padStart(2,"0"),mm=String(m%60).padStart(2,"0");
-    txt+=`${hh}:${mm} = ${v} ms\n`;
-  }
-  txt+="\n=== FC (5 em 5 min) ===\n";
-  for(const s of hrSamples){
-    const hh=String(Math.floor(s.minute/60)).padStart(2,"0"),mm=String(s.minute%60).padStart(2,"0");
-    txt+=`${hh}:${mm} = ${s.bpm} bpm\n`;
-  }
-  txt+="\n=== SONO ===\n";
-  if(results.sleep) txt+=JSON.stringify(results.sleep,null,2)+"\n";
-  else txt+="(não recebido)\n";
   try{ await navigator.clipboard.writeText(txt); setData("Copiado ✓","ok"); }
   catch{ setData("Copie do log técnico.","warn"); }
 };
