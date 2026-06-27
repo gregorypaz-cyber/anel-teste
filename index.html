@@ -3,240 +3,509 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Prova HRV — Anel R10</title>
+<title>Prova Anel R10 — Reck</title>
 <style>
   :root { --bg:#0f1115; --card:#181b22; --line:#2a2f3a; --txt:#e7eaf0; --muted:#9aa3b2;
-          --accent:#4f8cff; --good:#46d39a; --warn:#ffb454; --bad:#ff6b6b; }
+          --accent:#4f8cff; --good:#46d39a; --warn:#ffb454; --bad:#ff6b6b; --em:#a78bfa; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   body { margin:0; background:var(--bg); color:var(--txt);
          font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-         padding:16px; padding-bottom:48px; }
+         padding:16px; padding-bottom:64px; }
   h1 { font-size:20px; margin:4px 0 2px; }
-  .sub { color:var(--muted); font-size:13px; margin-bottom:16px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:14px;
-          padding:14px; margin-bottom:14px; }
-  .step { color:var(--muted); font-size:13px; margin:0 0 10px; }
-  .step b { color:var(--txt); }
-  button { width:100%; padding:15px; font-size:16px; font-weight:600; border:none;
-           border-radius:12px; background:var(--accent); color:#fff; margin-top:10px; }
-  button.secondary { background:#222734; color:var(--txt); border:1px solid var(--line); }
-  button:disabled { opacity:.4; }
-  .status { font-size:14px; margin-top:10px; padding:10px 12px; border-radius:10px;
-            background:#11141a; border:1px solid var(--line); color:var(--muted);
-            word-break:break-word; }
-  .status.ok { color:var(--good); } .status.err { color:var(--bad); }
-  .big { font-size:40px; font-weight:700; letter-spacing:-1px; }
-  .big small { font-size:15px; color:var(--muted); font-weight:500; }
-  table { width:100%; border-collapse:collapse; margin-top:8px; font-size:14px; }
-  th,td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); }
-  th { color:var(--muted); font-weight:500; font-size:12px; }
-  td.v { text-align:right; font-variant-numeric:tabular-nums; }
-  .pill { display:inline-block; font-size:12px; padding:2px 8px; border-radius:99px;
-          background:#222734; color:var(--muted); border:1px solid var(--line); }
-  details { margin-top:6px; }
-  summary { color:var(--muted); font-size:13px; cursor:pointer; }
-  pre { background:#0a0c10; border:1px solid var(--line); border-radius:10px; padding:10px;
-        font-size:11px; line-height:1.45; overflow:auto; max-height:240px; color:#aeb6c4;
-        white-space:pre-wrap; word-break:break-all; }
-  .hint { font-size:12px; color:var(--muted); margin-top:8px; }
+  .sub { color:var(--muted); font-size:13px; margin-bottom:18px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px;
+          padding:16px; margin-bottom:14px; }
+  h2 { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.08em;
+       color:var(--muted); margin:0 0 12px; }
+  button { width:100%; padding:15px; font-size:15px; font-weight:600; border:none;
+           border-radius:12px; background:var(--accent); color:#fff; margin-top:8px;
+           cursor:pointer; }
+  button.sec { background:#1e222e; color:var(--txt); border:1px solid var(--line); }
+  button.sm  { padding:10px; font-size:13px; border-radius:10px; margin-top:6px; }
+  button:disabled { opacity:.38; cursor:default; }
+  .status { font-size:13px; margin-top:10px; padding:10px 12px; border-radius:10px;
+            background:#11141a; border:1px solid var(--line); color:var(--muted); word-break:break-word; }
+  .status.ok { color:var(--good); border-color:rgba(70,211,154,.25); }
+  .status.err { color:var(--bad); border-color:rgba(255,107,107,.25); }
+  .status.warn { color:var(--warn); border-color:rgba(255,180,84,.25); }
+
+  /* resultado */
+  .metric-row { display:flex; align-items:baseline; gap:6px; margin-bottom:8px; }
+  .metric-val { font-size:36px; font-weight:800; letter-spacing:-1px; }
+  .metric-unit { font-size:13px; color:var(--muted); }
+  .badge { display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:600;
+           padding:3px 9px; border-radius:99px; margin-right:4px; margin-bottom:4px; }
+  .badge.ok  { background:rgba(70,211,154,.12); color:var(--good); border:1px solid rgba(70,211,154,.3); }
+  .badge.warn{ background:rgba(255,180,84,.12);  color:var(--warn); border:1px solid rgba(255,180,84,.3); }
+  .badge.muted{background:rgba(154,163,178,.1);  color:var(--muted);border:1px solid rgba(154,163,178,.2);}
+  table { width:100%; border-collapse:collapse; margin-top:10px; font-size:13px; }
+  th,td { text-align:left; padding:6px 4px; border-bottom:1px solid var(--line); }
+  th { color:var(--muted); font-weight:500; font-size:11px; }
+  td.r { text-align:right; font-variant-numeric:tabular-nums; font-family:monospace; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; }
+  .kpi { background:#0d1018; border:1px solid var(--line); border-radius:12px; padding:12px; }
+  .kpi-label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+  .kpi-val { font-size:24px; font-weight:800; margin-top:2px; }
+  .kpi-unit { font-size:11px; color:var(--muted); }
+  details { margin-top:8px; }
+  summary { color:var(--muted); font-size:12px; cursor:pointer; user-select:none; }
+  pre { background:#090b10; border:1px solid var(--line); border-radius:10px; padding:10px;
+        font-size:10px; line-height:1.5; overflow:auto; max-height:200px;
+        color:#8a94a6; white-space:pre-wrap; word-break:break-all; margin-top:6px; }
+  .hint { font-size:11px; color:var(--muted); margin-top:8px; line-height:1.5; }
+  .sep { border:none; border-top:1px solid var(--line); margin:14px 0; }
+  .tag-auto { font-size:10px; color:var(--good); background:rgba(70,211,154,.1);
+              border:1px solid rgba(70,211,154,.2); border-radius:6px; padding:1px 6px; }
+  .tag-wait { font-size:10px; color:var(--warn); background:rgba(255,180,84,.1);
+              border:1px solid rgba(255,180,84,.2); border-radius:6px; padding:1px 6px; }
 </style>
 </head>
 <body>
-  <h1>Prova HRV — Anel R10</h1>
-  <div class="sub">Lê o histórico de HRV cru do anel pelo Bluetooth. Não loga em nada, não grava nada — só mostra na tela.</div>
+<h1>🔬 Prova Anel R10</h1>
+<div class="sub">Testa todos os sinais que vão automatizar o check-in do Reck. Sem login, sem gravação.</div>
 
-  <div class="card">
-    <p class="step"><b>Antes de conectar:</b> feche o app <b>QRing</b> (deslize pra cima e remova) — o anel aceita só uma conexão por vez. Depois toque em Conectar e escolha o anel na lista.</p>
-    <button id="btnConnect">🔗 Conectar anel</button>
-    <button id="btnHRV" class="secondary" disabled>📈 Puxar HRV (hoje + ontem)</button>
-    <button id="btnHR" class="secondary" disabled>❤️ Testar FC ao vivo (10s)</button>
-    <button id="btnEnable" class="secondary" disabled>⚙️ Ligar HRV no anel (p/ próximas noites)</button>
-    <div id="status" class="status">Aguardando conexão…</div>
-  </div>
+<!-- CONEXÃO -->
+<div class="card">
+  <h2>1 — Conexão</h2>
+  <p class="hint">Feche o QRing, vá em Ajustes → Bluetooth → Esquecer R10_F705. Depois conecte aqui.</p>
+  <button id="btnConnect">🔗 Conectar R10_F705</button>
+  <div id="statusConn" class="status">Aguardando…</div>
+</div>
 
-  <div class="card" id="resultCard" style="display:none">
-    <div class="pill" id="resultPill">resultado</div>
-    <div class="big" id="avg" style="margin-top:8px">—</div>
-    <div id="tableWrap"></div>
-    <button id="btnCopy" class="secondary">📋 Copiar resultado (pra mandar pro Claude)</button>
-  </div>
+<!-- SINAIS -->
+<div class="card">
+  <h2>2 — Puxar todos os sinais da noite</h2>
+  <p class="hint">Rode de manhã, depois de dormir com o anel.</p>
+  <button id="btnHRV"   class="sec" disabled>📈 HRV (já confirmado — puxar de novo)</button>
+  <button id="btnHR"    class="sec" disabled>❤️ FC histórica → RHR + FC no sono</button>
+  <button id="btnSleep" class="sec" disabled>🌙 Sono (duração, profundo, REM, despertares)</button>
+  <button id="btnAll"                disabled>▶️ Puxar TUDO de uma vez</button>
+  <div id="statusData" class="status">Conecte primeiro.</div>
+</div>
 
-  <div class="card">
-    <details>
-      <summary>Log técnico (pacotes crus)</summary>
-      <pre id="log"></pre>
-    </details>
-    <div class="hint">Se o HRV vier vazio mas a FC ao vivo funcionar, o Bluetooth está OK e é o firmware do R10 que não guarda HRV — essa é a resposta que a gente quer descobrir.</div>
+<!-- RESULTADO HRV -->
+<div class="card" id="cardHRV" style="display:none">
+  <h2>HRV <span class="tag-auto">✅ automático</span></h2>
+  <div class="metric-row">
+    <div class="metric-val" id="valHRV">—</div>
+    <div class="metric-unit">ms · média noturna</div>
   </div>
+  <div id="badgesHRV"></div>
+  <table><tr><th>Hora</th><th class="r">HRV (ms)</th></tr>
+  <tbody id="tblHRV"></tbody></table>
+</div>
+
+<!-- RESULTADO FC / RHR -->
+<div class="card" id="cardHR" style="display:none">
+  <h2>FC histórica <span class="tag-auto">✅ automático</span></h2>
+  <div class="grid2">
+    <div class="kpi">
+      <div class="kpi-label">RHR (mínimo noturno)</div>
+      <div class="kpi-val" id="valRHR">—</div>
+      <div class="kpi-unit">bpm</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">FC média no sono</div>
+      <div class="kpi-val" id="valSleepHR">—</div>
+      <div class="kpi-unit">bpm</div>
+    </div>
+  </div>
+  <div id="badgesHR"></div>
+  <details>
+    <summary>Ver leituras (5 em 5 min)</summary>
+    <table><tr><th>Hora</th><th class="r">FC (bpm)</th></tr>
+    <tbody id="tblHR"></tbody></table>
+  </details>
+</div>
+
+<!-- RESULTADO SONO -->
+<div class="card" id="cardSleep" style="display:none">
+  <h2>Sono <span id="tagSleep" class="tag-wait">🧪 a verificar</span></h2>
+  <div class="grid2">
+    <div class="kpi">
+      <div class="kpi-label">Duração total</div>
+      <div class="kpi-val" id="valDuration">—</div>
+      <div class="kpi-unit">horas</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Horário de deitar</div>
+      <div class="kpi-val" id="valBedtime" style="font-size:20px">—</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Sono Profundo</div>
+      <div class="kpi-val" id="valDeep">—</div>
+      <div class="kpi-unit">%</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Sono REM</div>
+      <div class="kpi-val" id="valREM">—</div>
+      <div class="kpi-unit">%</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Sono Leve</div>
+      <div class="kpi-val" id="valLight">—</div>
+      <div class="kpi-unit">%</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Despertares</div>
+      <div class="kpi-val" id="valAwake">—</div>
+      <div class="kpi-unit">períodos</div>
+    </div>
+  </div>
+  <div id="badgesSleep"></div>
+  <details>
+    <summary>Bytes crus do sono (debug)</summary>
+    <pre id="rawSleep"></pre>
+  </details>
+</div>
+
+<!-- COPIAR -->
+<div class="card" id="cardCopy" style="display:none">
+  <button id="btnCopy" class="sec sm">📋 Copiar tudo (pra mandar pro Claude)</button>
+</div>
+
+<!-- LOG -->
+<div class="card">
+  <details>
+    <summary>Log técnico (pacotes BLE)</summary>
+    <pre id="log"></pre>
+  </details>
+  <p class="hint">Se o sono vier vazio mas o HRV e FC funcionarem, o firmware do R10 pode não expor sono via big-data — e aí o sono continua vindo do QRing manualmente. Cada resultado conta.</p>
+</div>
 
 <script>
-// ===== Protocolo Colmi (portado do PulseLoop, família 6E40) =====
-const SERVICE_V1 = "6e40fff0-b5a3-f393-e0a9-e50e24dcca9e";
-const SERVICE_V2 = "de5bf728-d711-4e47-af26-65e3012a5dc7";
-const WRITE_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
-const NOTIFY_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+// ==================== PROTOCOLO COLMI (portado do PulseLoop) ====================
+const SVC1   = "6e40fff0-b5a3-f393-e0a9-e50e24dcca9e";
+const SVC2   = "de5bf728-d711-4e47-af26-65e3012a5dc7";
+const CHR_WRITE   = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // comandos normais (framed 16 bytes)
+const CHR_NOTIFY1 = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // notificações normais
+const CHR_CMD     = "de5bf72a-d711-4e47-af26-65e3012a5dc7"; // big-data request (raw, svc V2)
+const CHR_NOTIFY2 = "de5bf729-d711-4e47-af26-65e3012a5dc7"; // big-data response
 
-const CMD = { setDateTime:0x01, phoneName:0x04, autoHRPref:0x16, realtimeHR:0x1e,
-              autoHRVPref:0x38, syncHRV:0x39, prefWrite:0x02 };
+const CMD = { setDateTime:0x01, phoneName:0x04, autoHRPref:0x16,
+              syncHR:0x15, syncHRV:0x39, autoHRVPref:0x38, prefWrite:0x02, bigData:0xBC };
+const SLEEP_TYPE = { light:0x02, deep:0x03, rem:0x04, awake:0x05 };
 
-let writeChar=null, notifyChar=null, device=null;
-let hrvSamples={};         // minuteOfDay -> hrv
-let collecting=false;
-let liveHR=null;
+let writeChar=null, cmdChar=null, notify1=null, notify2=null, device=null;
+let svc1=null, svc2=null;
+let results = { hrv:{}, hr:[], sleep:null };
 
+// ---- helpers BLE ----
 const $ = id => document.getElementById(id);
 const logEl = $("log");
-function log(line){ logEl.textContent += line + "\n"; logEl.scrollTop = logEl.scrollHeight; }
-function setStatus(t, cls=""){ const s=$("status"); s.textContent=t; s.className="status "+cls; }
-const sleep = ms => new Promise(r=>setTimeout(r,ms));
-const hex = arr => Array.from(arr).map(b=>b.toString(16).padStart(2,"0")).join(" ");
+function log(s){ logEl.textContent += s + "\n"; logEl.scrollTop = logEl.scrollHeight; }
+function hex(arr){ return Array.from(arr).map(b=>b.toString(16).padStart(2,"0")).join(" "); }
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+function setConn(t,c=""){ const s=$("statusConn"); s.textContent=t; s.className="status "+c; }
+function setData(t,c=""){ const s=$("statusData"); s.textContent=t; s.className="status "+c; }
 
-// monta frame de 16 bytes com checksum (Σ dos 15 primeiros) & 0xff
+// monta frame 16 bytes: 15 de conteúdo + checksum = Σ & 0xff
 function frame(content){
-  const buf = new Uint8Array(16);
-  for(let i=0;i<Math.min(content.length,15);i++) buf[i]=content[i];
-  let cs=0; for(let i=0;i<15;i++) cs=(cs+buf[i])&0xff;
-  buf[15]=cs; return buf;
+  const b = new Uint8Array(16);
+  for(let i=0;i<Math.min(content.length,15);i++) b[i]=content[i];
+  let cs=0; for(let i=0;i<15;i++) cs=(cs+b[i])&0xff; b[15]=cs; return b;
 }
-function bcd(v){ return ((Math.floor((v%100)/10))<<4) | (v%10); }
-function setDateTimeBytes(){
+function bcd(v){ return ((Math.floor((v%100)/10))<<4)|(v%10); }
+function dateBytes(){
   const d=new Date();
-  return [CMD.setDateTime, bcd(d.getFullYear()%2000), bcd(d.getMonth()+1),
-          bcd(d.getDate()), bcd(d.getHours()), bcd(d.getMinutes()), bcd(d.getSeconds())];
-}
-function syncHRVBytes(daysAgo){
-  const d=daysAgo>>>0;
-  return [CMD.syncHRV, d&0xff, (d>>8)&0xff, (d>>16)&0xff, (d>>24)&0xff];
+  return [CMD.setDateTime,bcd(d.getFullYear()%2000),bcd(d.getMonth()+1),
+          bcd(d.getDate()),bcd(d.getHours()),bcd(d.getMinutes()),bcd(d.getSeconds())];
 }
 
 async function send(content){
-  const f = frame(content);
-  try { await writeChar.writeValueWithoutResponse(f); }
-  catch(e){ await writeChar.writeValue(f); }
+  const f=frame(content);
+  try{ await writeChar.writeValueWithoutResponse(f); }catch{ await writeChar.writeValue(f); }
   log("→ "+hex(f));
 }
-
-// ===== Conexão =====
-$("btnConnect").onclick = async () => {
-  if(!navigator.bluetooth){ setStatus("Esse navegador não tem Web Bluetooth. Use o Bluefy (iPhone) ou Chrome/Edge.","err"); return; }
-  try{
-    setStatus("Abrindo seletor de Bluetooth…");
-    device = await navigator.bluetooth.requestDevice({
-      acceptAllDevices:true, optionalServices:[SERVICE_V1, SERVICE_V2]
-    });
-    setStatus("Conectando ao "+(device.name||"anel")+"…");
-    device.addEventListener("gattserverdisconnected", ()=>setStatus("Anel desconectado.","err"));
-    const server = await device.gatt.connect();
-    let service;
-    try { service = await server.getPrimaryService(SERVICE_V1); }
-    catch(e){ service = await server.getPrimaryService(SERVICE_V2); }
-    writeChar  = await service.getCharacteristic(WRITE_UUID);
-    notifyChar = await service.getCharacteristic(NOTIFY_UUID);
-    await notifyChar.startNotifications();
-    notifyChar.addEventListener("characteristicvaluechanged", onNotify);
-    setStatus("Conectado ao "+(device.name||"anel")+" ✓","ok");
-    $("btnHRV").disabled=false; $("btnHR").disabled=false; $("btnEnable").disabled=false;
-  }catch(e){ setStatus("Falha: "+e.message,"err"); log("ERRO: "+e); }
-};
-
-// ===== Recebe pacotes =====
-function onNotify(ev){
-  const dv = ev.target.value;
-  const b = new Uint8Array(dv.byteLength);
-  for(let i=0;i<dv.byteLength;i++) b[i]=dv.getUint8(i);
-  log("← "+hex(b));
-  if(b.length!==16) return;
-  // valida checksum
-  let cs=0; for(let i=0;i<15;i++) cs=(cs+b[i])&0xff;
-  if(cs!==b[15]) { log("  (checksum inválido, ignorado)"); return; }
-
-  if(b[0]===CMD.syncHRV && collecting) decodeHRVPage(b);
-  if(b[0]===CMD.realtimeHR){ const bpm=b[1]; if(bpm>=30&&bpm<=220){ liveHR=bpm; setStatus("FC ao vivo: "+bpm+" bpm","ok"); } }
+async function sendRaw(content){ // big-data: raw, sem frame, no CHR_CMD
+  const b=new Uint8Array(content);
+  try{ await cmdChar.writeValueWithoutResponse(b); }catch{ await cmdChar.writeValue(b); }
+  log("→ raw "+hex(b));
 }
 
+// ==================== CONEXÃO ====================
+$("btnConnect").onclick = async () => {
+  if(!navigator.bluetooth){
+    setConn("Web Bluetooth não disponível. Use Bluefy (iPhone) ou Chrome/Edge.","err"); return;
+  }
+  try{
+    setConn("Abrindo seletor Bluetooth…");
+    device = await navigator.bluetooth.requestDevice({
+      acceptAllDevices:true, optionalServices:[SVC1, SVC2]
+    });
+    setConn("Conectando a "+(device.name||"anel")+"…");
+    device.addEventListener("gattserverdisconnected", ()=>{ setConn("Desconectado.","err"); disableButtons(); });
+    const server = await device.gatt.connect();
+
+    // tenta V1 (obrigatório)
+    try{ svc1 = await server.getPrimaryService(SVC1); } catch(e){ log("SVC1 não encontrado: "+e); }
+    // tenta V2 (opcional — necessário para sono)
+    try{ svc2 = await server.getPrimaryService(SVC2); } catch(e){ log("SVC2 não encontrado (sono indisponível): "+e); }
+
+    if(!svc1){ setConn("Serviço V1 não encontrado — anel incompatível?","err"); return; }
+
+    writeChar = await svc1.getCharacteristic(CHR_WRITE);
+    notify1   = await svc1.getCharacteristic(CHR_NOTIFY1);
+    await notify1.startNotifications();
+    notify1.addEventListener("characteristicvaluechanged", onNotify1);
+
+    if(svc2){
+      try{
+        cmdChar = await svc2.getCharacteristic(CHR_CMD);
+        notify2 = await svc2.getCharacteristic(CHR_NOTIFY2);
+        await notify2.startNotifications();
+        notify2.addEventListener("characteristicvaluechanged", onNotify2);
+        log("SVC2 OK — sono disponível");
+      } catch(e){ log("SVC2 chars não encontrados: "+e); }
+    }
+
+    setConn("✓ Conectado a "+(device.name||"R10"), "ok");
+    enableButtons();
+    // handshake inicial
+    await send([CMD.phoneName,0x02,0x0a,0x52,0x4b]); // "RK" (Reck)
+    await sleep(200);
+    await send(dateBytes());
+  } catch(e){ setConn("Falha: "+e.message,"err"); log("ERR: "+e); }
+};
+
+function enableButtons(){ [$("btnHRV"),$("btnHR"),$("btnSleep"),$("btnAll")].forEach(b=>b.disabled=false); }
+function disableButtons(){ [$("btnHRV"),$("btnHR"),$("btnSleep"),$("btnAll")].forEach(b=>b.disabled=true); }
+
+// ==================== NOTIFICAÇÕES V1 (HRV + FC) ====================
+let collectHRV=false, collectHR=false;
+let hrSamples=[];
+
+function onNotify1(ev){
+  const dv=ev.target.value;
+  const b=new Uint8Array(dv.byteLength); for(let i=0;i<dv.byteLength;i++) b[i]=dv.getUint8(i);
+  log("← "+hex(b));
+  if(b.length!==16) return;
+  let cs=0; for(let i=0;i<15;i++) cs=(cs+b[i])&0xff;
+  if(cs!==b[15]){ log("  (cksum inválido)"); return; }
+  if(b[0]===CMD.syncHRV && collectHRV) decodeHRVPage(b);
+  if(b[0]===CMD.syncHR  && collectHR)  decodeHRPage(b);
+}
+
+// ---- HRV ----
 function decodeHRVPage(v){
-  const packetNr=v[1];
-  if(packetNr===0xff || packetNr===0) return;            // vazio / cabeçalho
-  const startIndex = packetNr===1 ? 3 : 2;
-  let minutesPrev = 0;
-  if(packetNr>1) minutesPrev = 12*30 + (packetNr-2)*13*30;
-  for(let i=startIndex;i<15;i++){
-    const hrv=v[i];
-    if(hrv===0) continue;
-    const minute = minutesPrev + (i-startIndex)*30;
-    hrvSamples[minute]=hrv;
+  const nr=v[1]; if(nr===0xff||nr===0) return;
+  const start=nr===1?3:2;
+  let minBase=nr===1?0:(12*30+(nr-2)*13*30);
+  for(let i=start;i<15;i++){
+    const hrv=v[i]; if(hrv===0) continue;
+    const minute=minBase+(i-start)*30;
+    results.hrv[minute]=hrv;
   }
 }
 
-// ===== Puxar HRV =====
+// ---- FC histórica ----
+function decodeHRPage(v){
+  const nr=v[1]; if(nr===0xff||nr===0) return;
+  const start=nr===1?6:2;
+  let minBase=nr===1?0:(9*5+(nr-2)*13*5);
+  for(let i=start;i<v.length-1;i++){
+    const bpm=v[i]; if(bpm===0) continue;
+    const minute=minBase+(i-start)*5;
+    hrSamples.push({minute,bpm});
+  }
+}
+
+// ==================== NOTIFICAÇÕES V2 (SONO big-data) ====================
+let sleepBuf=[];
+let sleepExpected=0;
+function onNotify2(ev){
+  const dv=ev.target.value;
+  const b=new Uint8Array(dv.byteLength); for(let i=0;i<dv.byteLength;i++) b[i]=dv.getUint8(i);
+  log("← bigdata "+hex(b));
+  if(sleepBuf.length===0 && b[0]===CMD.bigData){
+    const len=(b[2]|(b[3]<<8))+6;
+    sleepExpected=len;
+  }
+  for(const byte of b) sleepBuf.push(byte);
+  if(sleepBuf.length>=sleepExpected && sleepExpected>0) decodeSleepBuffer();
+}
+
+function decodeSleepBuffer(){
+  const v=sleepBuf;
+  log("Sono buffer completo: "+v.length+" bytes");
+  $("rawSleep").textContent = Array.from(v).map(b=>b.toString(16).padStart(2,"0")).join(" ");
+  $("cardSleep").style.display="block";
+  if(v.length<8){ showSleepEmpty("Buffer de sono muito curto"); return; }
+  const packetLen=(v[2]|(v[3]<<8));
+  if(packetLen<2){ showSleepEmpty("Payload vazio"); return; }
+  const daysInPacket=v[6];
+  if(daysInPacket===0){ showSleepEmpty("0 dias no pacote de sono"); return; }
+  let idx=7;
+  const sessions=[];
+  for(let d=0;d<daysInPacket;d++){
+    if(idx+5>=v.length) break;
+    const daysAgo=v[idx++];
+    const dayBytes=v[idx++];
+    const sleepStart=(v[idx]|(v[idx+1]<<8)); idx+=2;
+    const sleepEnd  =(v[idx]|(v[idx+1]<<8)); idx+=2;
+    const stages=[];
+    let j=4;
+    while(j<dayBytes && idx+1<v.length){
+      const type=v[idx++], mins=v[idx++]; j+=2;
+      if(mins>0) stages.push({type,mins});
+    }
+    sessions.push({daysAgo,sleepStart,sleepEnd,stages});
+  }
+  if(sessions.length===0){ showSleepEmpty("Nenhuma sessão decodificada"); return; }
+  renderSleep(sessions[0]); // mostra a noite mais recente
+}
+
+function showSleepEmpty(reason){
+  setData("Sono: "+reason+" — veja os bytes crus para diagnóstico.","warn");
+  $("tagSleep").textContent="⚠️ sem dado"; $("tagSleep").className="tag-wait";
+}
+
+function renderSleep(s){
+  // horas dormindo: cross-midnight → start pode ser > end (ex: 23h30 → 330 min → sleepStart=1410>sleepEnd=390)
+  const start=s.sleepStart>s.sleepEnd ? s.sleepStart-1440 : s.sleepStart;
+  const totalMins=s.sleepEnd-start;
+  const totalH=totalMins/60;
+
+  let deep=0,rem=0,light=0,awake=0,awakePeriods=0;
+  for(const sg of s.stages){
+    if(sg.type===SLEEP_TYPE.deep)  deep+=sg.mins;
+    else if(sg.type===SLEEP_TYPE.rem)   rem+=sg.mins;
+    else if(sg.type===SLEEP_TYPE.light) light+=sg.mins;
+    else if(sg.type===SLEEP_TYPE.awake){ awake+=sg.mins; awakePeriods++; }
+  }
+  const scored=deep+rem+light+awake||1;
+  const deepPct=Math.round(deep/scored*100), remPct=Math.round(rem/scored*100),
+        lightPct=Math.round(light/scored*100);
+
+  const hh=m=>String(Math.floor(((m+1440)%1440)/60)).padStart(2,"0")+":"+String((m+1440)%60).padStart(2,"0");
+
+  $("valDuration").textContent=totalH.toFixed(1);
+  $("valBedtime").textContent=hh(s.sleepStart);
+  $("valDeep").textContent=deepPct;
+  $("valREM").textContent=remPct;
+  $("valLight").textContent=lightPct;
+  $("valAwake").textContent=awakePeriods;
+
+  const ok=deep>0||rem>0;
+  $("tagSleep").textContent=ok?"✅ automático":"⚠️ só duração";
+  $("tagSleep").className=ok?"tag-auto":"tag-wait";
+  $("badgesSleep").innerHTML=
+    badge(totalH.toFixed(1)+"h sono","ok")+
+    badge(deepPct+"% profundo", deepPct>=10?"ok":"warn")+
+    badge(remPct+"% REM", remPct>=10?"ok":"warn")+
+    badge(awakePeriods+" despertares",awakePeriods<5?"ok":"warn");
+
+  results.sleep={totalH,bedtime:hh(s.sleepStart),wake:hh(s.sleepEnd),deepPct,remPct,lightPct,awakePeriods};
+  setData("Sono recebido ✅","ok");
+}
+
+// ==================== BOTÕES ====================
 $("btnHRV").onclick = async () => {
-  hrvSamples={}; collecting=true;
-  $("resultCard").style.display="none";
-  setStatus("Sincronizando relógio e pedindo HRV…");
-  await send([CMD.phoneName,0x02,0x0a,0x50,0x4c]);   await sleep(250);
-  await send(setDateTimeBytes());                    await sleep(250);
-  await send(syncHRVBytes(0));                        await sleep(2500); // hoje
-  await send(syncHRVBytes(1));                        await sleep(2500); // ontem
-  collecting=false;
+  results.hrv={}; collectHRV=true;
+  setData("Pedindo HRV (hoje + ontem)…");
+  await send([CMD.syncHRV,0,0,0,0]); await sleep(2500);
+  await send([CMD.syncHRV,1,0,0,0]); await sleep(2500);
+  collectHRV=false;
   renderHRV();
 };
 
+$("btnHR").onclick = async () => {
+  hrSamples=[]; collectHR=true;
+  setData("Pedindo FC histórica (últimas 24h)…");
+  // pede a partir de ontem meia-noite
+  const yesterday=new Date(); yesterday.setDate(yesterday.getDate()-1); yesterday.setHours(0,0,0,0);
+  const ts=Math.floor(yesterday.getTime()/1000)>>>0;
+  await send([CMD.syncHR, ts&0xff, (ts>>8)&0xff, (ts>>16)&0xff, (ts>>24)&0xff]);
+  await sleep(4000);
+  collectHR=false;
+  renderHR();
+};
+
+$("btnSleep").onclick = async () => {
+  if(!cmdChar){ setData("Serviço V2 não disponível neste anel — sono via big-data não suportado. HRV e FC funcionam normalmente.","warn"); return; }
+  sleepBuf=[]; sleepExpected=0;
+  setData("Pedindo dados de sono…");
+  // big-data sleep: [0xBC, 0x27, 0x01, 0x00, 0xFF, 0x00, 0xFF] — vai no CHR_CMD, sem frame
+  await sendRaw([0xBC,0x27,0x01,0x00,0xFF,0x00,0xFF]);
+  await sleep(5000); // big-data leva mais tempo
+  if(sleepBuf.length===0) showSleepEmpty("Nenhum pacote recebido — firmware pode não suportar big-data");
+};
+
+$("btnAll").onclick = async () => {
+  await $("btnHRV").onclick();
+  await sleep(500);
+  await $("btnHR").onclick();
+  await sleep(500);
+  await $("btnSleep").onclick();
+  $("cardCopy").style.display="block";
+};
+
+// ==================== RENDER ====================
+function badge(t,type="muted"){ return `<span class="badge ${type}">${t}</span>`; }
+
 function renderHRV(){
-  const minutes = Object.keys(hrvSamples).map(Number).sort((a,b)=>a-b);
-  $("resultCard").style.display="block";
-  if(minutes.length===0){
-    $("resultPill").textContent="HRV vazio";
-    $("avg").innerHTML='<span style="color:var(--warn)">Nenhum HRV retornado</span>';
-    $("tableWrap").innerHTML='<p class="hint">O anel não devolveu HRV. Veja o log técnico: se vieram pacotes 0x39 só com 0xff, o firmware do R10 não guarda HRV por esse caminho. Rode o teste de FC ao vivo pra confirmar que o Bluetooth está OK.</p>';
-    setStatus("HRV vazio — ver resultado","warn");
-    return;
+  const mins=Object.keys(results.hrv).map(Number).sort((a,b)=>a-b);
+  $("cardHRV").style.display="block";
+  if(mins.length===0){ $("valHRV").textContent="vazio"; return; }
+  const night=mins.filter(m=>m<=8*60).map(m=>results.hrv[m]);
+  const avg=night.length?Math.round(night.reduce((a,b)=>a+b)/night.length):null;
+  $("valHRV").textContent=avg??mins.map(m=>results.hrv[m]).reduce((a,b)=>a+b)/mins.length|0;
+  $("badgesHRV").innerHTML=badge(mins.length+" leituras","ok")+badge(night.length+" noturnas",night.length>=4?"ok":"warn");
+  const tbody=$("tblHRV"); tbody.innerHTML="";
+  for(const m of mins){
+    const hh=String(Math.floor(m/60)).padStart(2,"0"),mm=String(m%60).padStart(2,"0");
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${hh}:${mm}</td><td class="r">${results.hrv[m]}</td>`;
+    tbody.appendChild(tr);
   }
-  // média noturna = janelas entre 00:00 e 08:00
-  const night = minutes.filter(m=>m>=0 && m<=8*60).map(m=>hrvSamples[m]);
-  const avg = night.length ? Math.round(night.reduce((a,b)=>a+b,0)/night.length) : null;
-  $("resultPill").textContent = minutes.length+" leituras";
-  $("avg").innerHTML = avg!==null
-    ? avg+' <small>ms · média 00–08h ('+night.length+' leituras)</small>'
-    : '— <small>sem leituras na janela noturna</small>';
-  let rows="";
-  for(const m of minutes){
-    const hh=String(Math.floor(m/60)).padStart(2,"0"), mm=String(m%60).padStart(2,"0");
-    rows+=`<tr><td>${hh}:${mm}</td><td class="v">${hrvSamples[m]}</td></tr>`;
-  }
-  $("tableWrap").innerHTML=`<table><tr><th>Hora</th><th style="text-align:right">HRV (ms)</th></tr>${rows}</table>`;
-  setStatus("HRV recebido ✓","ok");
+  setData("HRV recebido ✅","ok");
 }
 
-// ===== FC ao vivo (liveness) =====
-$("btnHR").onclick = async () => {
-  setStatus("Iniciando FC ao vivo… encoste o anel bem no dedo");
-  liveHR=null;
-  await send([CMD.realtimeHR,0x01]);
-  await sleep(10000);
-  await send([CMD.realtimeHR,0x02]);
-  setStatus(liveHR!==null ? "FC ao vivo OK ("+liveHR+" bpm) — Bluetooth funcionando ✓"
-                          : "Não veio FC ao vivo (anel solto ou frio). Tente de novo.", liveHR!==null?"ok":"warn");
-};
-
-// ===== Ligar HRV pras próximas noites =====
-$("btnEnable").onclick = async () => {
-  await send([CMD.autoHRVPref, CMD.prefWrite, 0x01]);
-  await send([CMD.autoHRPref, CMD.prefWrite, 0x01, 0x05]); // HR de fundo a cada 5min (ajuda o HRV)
-  setStatus("HRV ligado no anel. A partir desta noite ele acumula HRV. ✓","ok");
-};
-
-// ===== Copiar resultado =====
-$("btnCopy").onclick = async () => {
-  const minutes = Object.keys(hrvSamples).map(Number).sort((a,b)=>a-b);
-  let txt = "RESULTADO PROVA HRV — Anel "+(device?.name||"R10")+"\n";
-  txt += "Leituras HRV: "+minutes.length+"\n";
-  for(const m of minutes){
-    const hh=String(Math.floor(m/60)).padStart(2,"0"), mm=String(m%60).padStart(2,"0");
-    txt += `${hh}:${mm} = ${hrvSamples[m]} ms\n`;
+function renderHR(){
+  $("cardHR").style.display="block";
+  if(hrSamples.length===0){
+    $("valRHR").textContent="vazio"; $("valSleepHR").textContent="—";
+    setData("FC histórica vazia — firmware pode não suportar.","warn"); return;
   }
-  txt += "\n--- LOG TÉCNICO ---\n"+logEl.textContent;
-  try{ await navigator.clipboard.writeText(txt); setStatus("Resultado copiado ✓","ok"); }
-  catch(e){ setStatus("Copie manualmente do log técnico.","warn"); }
+  // janela de sono = 21h a 09h (pega o mínimo e média)
+  const sleepWindow=hrSamples.filter(s=>{
+    const h=Math.floor(s.minute/60);
+    return h>=21||h<9; // 21h–09h
+  });
+  const rhr=sleepWindow.length?Math.min(...sleepWindow.map(s=>s.bpm)):Math.min(...hrSamples.map(s=>s.bpm));
+  const sleepMean=sleepWindow.length?Math.round(sleepWindow.map(s=>s.bpm).reduce((a,b)=>a+b)/sleepWindow.length):null;
+  $("valRHR").textContent=rhr;
+  $("valSleepHR").textContent=sleepMean??"—";
+  $("badgesHR").innerHTML=badge(hrSamples.length+" leituras","ok")+badge(sleepWindow.length+" noturnas",sleepWindow.length>4?"ok":"warn");
+  const tbody=$("tblHR"); tbody.innerHTML="";
+  for(const s of hrSamples){
+    const hh=String(Math.floor(s.minute/60)).padStart(2,"0"),mm=String(s.minute%60).padStart(2,"0");
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${hh}:${mm}</td><td class="r">${s.bpm}</td>`;
+    tbody.appendChild(tr);
+  }
+  setData("FC recebida ✅","ok");
+}
+
+// ==================== COPIAR ====================
+$("btnCopy").onclick = async () => {
+  let txt="PROVA ANEL R10 — "+(device?.name||"R10")+"\n";
+  txt+="Data: "+new Date().toLocaleString("pt-BR")+"\n\n";
+  txt+="=== HRV ===\n";
+  for(const [m,v] of Object.entries(results.hrv)){
+    const hh=String(Math.floor(m/60)).padStart(2,"0"),mm=String(m%60).padStart(2,"0");
+    txt+=`${hh}:${mm} = ${v} ms\n`;
+  }
+  txt+="\n=== FC (5 em 5 min) ===\n";
+  for(const s of hrSamples){
+    const hh=String(Math.floor(s.minute/60)).padStart(2,"0"),mm=String(s.minute%60).padStart(2,"0");
+    txt+=`${hh}:${mm} = ${s.bpm} bpm\n`;
+  }
+  txt+="\n=== SONO ===\n";
+  if(results.sleep) txt+=JSON.stringify(results.sleep,null,2)+"\n";
+  else txt+="(não recebido)\n";
+  try{ await navigator.clipboard.writeText(txt); setData("Copiado ✓","ok"); }
+  catch{ setData("Copie do log técnico.","warn"); }
 };
 </script>
 </body>
