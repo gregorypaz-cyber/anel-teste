@@ -210,6 +210,17 @@ function candC3(day){const v=valsInWindow(day,60,240);const r=mean(v);return r==
 function candC4(day){const v=valsInWindow(day,300,420);const r=mean(v);return r==null?null:Math.round(r);}
 // C5: mediana noturna (robusta a outliers)
 function candC5(day){const v=valsInWindow(day,0,480);const r=median(v);return r==null?null:Math.round(r);}
+// C6: máximo do sono profundo (01h–06h, exclui 00h pré-sono e 07h artefato acordar)
+// Hipótese: noites bem recuperadas têm PICOS altos durante sono profundo; noites ruins ficam achatadas
+function candC6(day){const v=valsInWindow(day,60,360);return v.length?Math.max(...v):null;}
+// C7: RANGE da noite (máx − mín, janela 01h–06h)
+// Correlação r=+1.00 em 3 noites: noite boa=14-15ms, noite ruim=6ms
+// Mede o quanto o HRV oscila — sono profundo real cria picos que aumentam o range
+function candC7_range(day){
+  const v=valsInWindow(day,60,360);
+  if(v.length<2) return null;
+  return Math.max(...v)-Math.min(...v);
+}
 
 const CANDS=[
   {id:"C1",name:"Média noturna",sub:"0h–8h (atual)",fn:candC1},
@@ -217,6 +228,8 @@ const CANDS=[
   {id:"C3",name:"Sono profundo",sub:"1h–4h",fn:candC3},
   {id:"C4",name:"Pré-acordar",sub:"5h–7h",fn:candC4},
   {id:"C5",name:"Mediana",sub:"0h–8h",fn:candC5},
+  {id:"C6",name:"🏆 Máx profundo",sub:"01h–06h (candidato)",fn:candC6,highlight:true},
+  {id:"RANGE",name:"📐 Range noite",sub:"01h–06h (flatness)",fn:candC7_range,highlight:true,lowerIsBad:true},
 ];
 
 async function send(c){const f=frame(c);try{await writeChar.writeValueWithoutResponse(f);}catch{await writeChar.writeValue(f);}log("→ "+hex(f));}
@@ -419,42 +432,84 @@ function renderCandidates(){
   const valid=results.filter(r=>r.avgDelta!=null&&r.dirPct!=null);
   const winner=valid.length?valid.reduce((a,b)=>b.score>a.score?b:a):null;
 
+  // Separa candidatos normais do RANGE (escala diferente — não entra no ranking)
+  const mainCands = results.filter(r=>r.id!=='RANGE');
+  const rangeCand = results.find(r=>r.id==='RANGE');
   const tbody=$("tblCand");tbody.innerHTML="";
-  for(const r of results){
+  for(const r of mainCands){
     const isWin=winner&&r.id===winner.id;
     const tr=document.createElement("tr");
+    if(r.highlight) tr.style.background='rgba(79,140,255,.07)';
     if(isWin)tr.className="cand-winner";
     const dirCls=r.dirPct>=70?"match-good":r.dirPct>=50?"match-warn":"match-bad";
+    const deltaColor=r.avgDelta==null?'var(--muted)':r.avgDelta<=8?'var(--good)':r.avgDelta<=15?'var(--warn)':'var(--bad)';
     tr.innerHTML=`
-      <td><span class="cand-name">${isWin?"🏆 ":""}${r.name}</span><br><span class="cand-sub">${r.sub}</span></td>
-      <td class="r" style="color:${r.avgDelta==null?'var(--muted)':r.avgDelta<=8?'var(--good)':r.avgDelta<=15?'var(--warn)':'var(--bad)'}">${r.avgDelta!=null?r.avgDelta.toFixed(1):"—"}</td>
+      <td><span class="cand-name">${r.name}</span><br><span class="cand-sub">${r.sub}</span></td>
+      <td class="r" style="color:${deltaColor}">${r.avgDelta!=null?r.avgDelta.toFixed(1):"—"}</td>
       <td class="r ${dirCls}">${r.dirPct!=null?r.dirPct+"%":"—"}</td>
       <td class="r">${r.amplitude!=null?r.amplitude+"ms":"—"}</td>`;
     tbody.appendChild(tr);
   }
+  // RANGE: linha separada com interpretação própria
+  if(rangeCand){
+    const sep=document.createElement("tr");
+    sep.innerHTML=`<td colspan="4" style="padding:8px 4px 2px;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.06em">📐 Range noturno (01h–06h) — métrica complementar</td>`;
+    tbody.appendChild(sep);
+    const tr=document.createElement("tr");
+    tr.style.background='rgba(167,139,250,.07)';
+    const dirCls=rangeCand.dirPct>=70?"match-good":rangeCand.dirPct>=50?"match-warn":"match-bad";
+    // Para RANGE: maior = melhor (noite boa tem range maior); Δ não faz sentido em ms vs HRV
+    const rVals=DAYS.map(d=>rangeCand.vals[d]).filter(v=>v!=null);
+    const rMin=rVals.length?Math.min(...rVals):null;
+    const rMax=rVals.length?Math.max(...rVals):null;
+    tr.innerHTML=`
+      <td><span class="cand-name">${rangeCand.name}</span><br><span class="cand-sub">${rangeCand.sub} · maior = noite melhor recuperada</span></td>
+      <td class="r" style="color:var(--muted)">—</td>
+      <td class="r ${dirCls}">${rangeCand.dirPct!=null?rangeCand.dirPct+"%":"—"}</td>
+      <td class="r">${rMin!=null?rMin+"–"+rMax+"ms":"—"}</td>`;
+    tbody.appendChild(tr);
+  }
 
   // veredicto
+  // Range complementar: pega valor de hoje
+  const rangeHoje=rangeCand?rangeCand.vals[0]:null;
+  const rangeBom=rangeCand?Math.max(...Object.values(rangeCand.vals).filter(v=>v!=null)):null;
+  let rangeMsg="";
+  if(rangeHoje!=null&&rangeBom!=null){
+    const cor=rangeHoje>=12?"var(--good)":rangeHoje>=8?"var(--warn)":"var(--bad)";
+    rangeMsg=` | 📐 Range hoje: <span style="color:${cor};font-weight:600">${rangeHoje}ms</span> (melhor semana: ${rangeBom}ms — range &lt;8ms sugere noite achatada)`;
+  }
   let txt="";
   if(!winner){txt="Dados insuficientes — rode mais noites.";}
   else{
-    txt=`🏆 Melhor janela hoje: <b>${winner.name} (${winner.sub})</b> — Δ médio ${winner.avgDelta.toFixed(1)}ms, ${winner.dirPct}% de direção correta, amplitude ${winner.amplitude}ms. `;
-    if(winner.dirPct>=70&&winner.amplitude>=8)txt+="Esta janela tem boa sensibilidade E acompanha o Zepp. Forte candidata.";
-    else if(winner.amplitude<8)txt+="⚠️ MAS amplitude baixa — nenhuma janela do anel hoje varia tanto quanto o Zepp. Confirme com mais 7 dias.";
-    else txt+="Continue logando: 3 dias é pouco pra cravar.";
+    txt=`🏆 Melhor janela: <b>${winner.name}</b> — Δ médio ${winner.avgDelta.toFixed(1)}ms, ${winner.dirPct}% direção correta, amplitude ${winner.amplitude}ms.`;
+    if(winner.id==="C6")txt+=" ✅ C6 (máx profundo) é o candidato mais promissor: captura picos de sono profundo que a média mascara.";
+    else if(winner.dirPct>=70&&winner.amplitude>=8)txt+=" Forte candidata.";
+    else if(winner.amplitude<8)txt+=" ⚠️ Amplitude baixa — confirme com mais dias.";
+    txt+=rangeMsg;
   }
   $("candVerdict").innerHTML=txt;
   $("tagCand").textContent=winner?winner.id+" lidera":"sem dados";
   $("tagCand").className="tag "+(winner&&winner.dirPct>=70?"ok":"pend");
 
   // detalhe por dia
-  let det='<table><tr><th>Data</th><th class="r">Zepp</th>'+CANDS.map(c=>`<th class="r">${c.id}</th>`).join("")+'</tr>';
+  let det='<table><tr><th>Data</th><th class="r">Zepp</th>'+results.map(c=>`<th class="r" style="${c.highlight?'color:var(--accent)':''}">${c.id}</th>`).join("")+'</tr>';
   for(const d of days){
     const iso=daysAgoToISO(d),z=ZEPP[iso]?.hrv;
-    det+=`<tr><td>${fmtDate(iso)}</td><td class="r">${z??"—"}</td>`;
-    for(const r of results){const v=r.vals[d];det+=`<td class="r">${v??"—"}</td>`;}
+    const isToday=d===0;
+    det+=`<tr${isToday?' style="background:rgba(79,140,255,.06)"':''}>`;
+    det+=`<td>${fmtDate(iso)}${isToday?' ◀':''}  </td><td class="r">${z??"—"}</td>`;
+    for(const r of results){
+      const v=r.vals[d];
+      let style='';
+      // destaca C6 e RANGE
+      if(r.id==='C6'&&v!=null) style='color:var(--accent);font-weight:600';
+      if(r.id==='RANGE'&&v!=null) style=v>=12?'color:var(--good)':v>=8?'color:var(--warn)':'color:var(--bad)';
+      det+=`<td class="r" style="${style}">${v??"—"}</td>`;
+    }
     det+="</tr>";
   }
-  det+="</table>";
+  det+="</table><p class='hint'>C6=máx profundo (01h–06h) | RANGE=máx−mín (01h–06h): verde≥12ms, amarelo≥8ms, vermelho&lt;8ms</p>";
   $("candDetail").innerHTML=det;
 }
 
@@ -599,10 +654,10 @@ $("btnAll").onclick=async()=>{
 $("btnCopy").onclick=async()=>{
   let txt="PAINEL ANEL R10 — "+(device?.name||"R10")+"\n"+new Date().toLocaleString("pt-BR")+"\n\n";
   txt+="=== HRV 7 DIAS — TODOS OS CANDIDATOS ===\n";
-  txt+="Data       | Zepp | C1(0-8h) | C2(1-7h) | C3(1-4h) | C4(5-7h) | C5(med)\n";
+  txt+="Data       | Zepp | C1(0-8h) | C2(1-7h) | C3(1-4h) | C4(5-7h) | C5(med) | C6(máx01-06h) | RANGE(01-06h)\n";
   for(let d=0;d<=6;d++){
     const iso=daysAgoToISO(d),z=ZEPP[iso]?.hrv??"—",day=ringHRV[d]??{};
-    txt+=`${iso} | ${z}ms | ${candC1(day)??"—"} | ${candC2(day)??"—"} | ${candC3(day)??"—"} | ${candC4(day)??"—"} | ${candC5(day)??"—"}\n`;
+    txt+=`${iso} | ${z}ms | ${candC1(day)??"—"} | ${candC2(day)??"—"} | ${candC3(day)??"—"} | ${candC4(day)??"—"} | ${candC5(day)??"—"} | ${candC6(day)??"—"} | ${candC7_range(day)??"—"}\n`;
   }
   txt+="\n=== HRV BRUTO POR HORA ===\n";
   for(let d=0;d<=6;d++){
