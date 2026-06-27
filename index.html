@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Prova HRV — Anel R10</title>
+<style>
+  :root { --bg:#0f1115; --card:#181b22; --line:#2a2f3a; --txt:#e7eaf0; --muted:#9aa3b2;
+          --accent:#4f8cff; --good:#46d39a; --warn:#ffb454; --bad:#ff6b6b; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:var(--bg); color:var(--txt);
+         font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+         padding:16px; padding-bottom:48px; }
+  h1 { font-size:20px; margin:4px 0 2px; }
+  .sub { color:var(--muted); font-size:13px; margin-bottom:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px;
+          padding:14px; margin-bottom:14px; }
+  .step { color:var(--muted); font-size:13px; margin:0 0 10px; }
+  .step b { color:var(--txt); }
+  button { width:100%; padding:15px; font-size:16px; font-weight:600; border:none;
+           border-radius:12px; background:var(--accent); color:#fff; margin-top:10px; }
+  button.secondary { background:#222734; color:var(--txt); border:1px solid var(--line); }
+  button:disabled { opacity:.4; }
+  .status { font-size:14px; margin-top:10px; padding:10px 12px; border-radius:10px;
+            background:#11141a; border:1px solid var(--line); color:var(--muted);
+            word-break:break-word; }
+  .status.ok { color:var(--good); } .status.err { color:var(--bad); }
+  .big { font-size:40px; font-weight:700; letter-spacing:-1px; }
+  .big small { font-size:15px; color:var(--muted); font-weight:500; }
+  table { width:100%; border-collapse:collapse; margin-top:8px; font-size:14px; }
+  th,td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); }
+  th { color:var(--muted); font-weight:500; font-size:12px; }
+  td.v { text-align:right; font-variant-numeric:tabular-nums; }
+  .pill { display:inline-block; font-size:12px; padding:2px 8px; border-radius:99px;
+          background:#222734; color:var(--muted); border:1px solid var(--line); }
+  details { margin-top:6px; }
+  summary { color:var(--muted); font-size:13px; cursor:pointer; }
+  pre { background:#0a0c10; border:1px solid var(--line); border-radius:10px; padding:10px;
+        font-size:11px; line-height:1.45; overflow:auto; max-height:240px; color:#aeb6c4;
+        white-space:pre-wrap; word-break:break-all; }
+  .hint { font-size:12px; color:var(--muted); margin-top:8px; }
+</style>
+</head>
+<body>
+  <h1>Prova HRV — Anel R10</h1>
+  <div class="sub">Lê o histórico de HRV cru do anel pelo Bluetooth. Não loga em nada, não grava nada — só mostra na tela.</div>
+
+  <div class="card">
+    <p class="step"><b>Antes de conectar:</b> feche o app <b>QRing</b> (deslize pra cima e remova) — o anel aceita só uma conexão por vez. Depois toque em Conectar e escolha o anel na lista.</p>
+    <button id="btnConnect">🔗 Conectar anel</button>
+    <button id="btnHRV" class="secondary" disabled>📈 Puxar HRV (hoje + ontem)</button>
+    <button id="btnHR" class="secondary" disabled>❤️ Testar FC ao vivo (10s)</button>
+    <button id="btnEnable" class="secondary" disabled>⚙️ Ligar HRV no anel (p/ próximas noites)</button>
+    <div id="status" class="status">Aguardando conexão…</div>
+  </div>
+
+  <div class="card" id="resultCard" style="display:none">
+    <div class="pill" id="resultPill">resultado</div>
+    <div class="big" id="avg" style="margin-top:8px">—</div>
+    <div id="tableWrap"></div>
+    <button id="btnCopy" class="secondary">📋 Copiar resultado (pra mandar pro Claude)</button>
+  </div>
+
+  <div class="card">
+    <details>
+      <summary>Log técnico (pacotes crus)</summary>
+      <pre id="log"></pre>
+    </details>
+    <div class="hint">Se o HRV vier vazio mas a FC ao vivo funcionar, o Bluetooth está OK e é o firmware do R10 que não guarda HRV — essa é a resposta que a gente quer descobrir.</div>
+  </div>
+
+<script>
+// ===== Protocolo Colmi (portado do PulseLoop, família 6E40) =====
+const SERVICE_V1 = "6e40fff0-b5a3-f393-e0a9-e50e24dcca9e";
+const SERVICE_V2 = "de5bf728-d711-4e47-af26-65e3012a5dc7";
+const WRITE_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+const NOTIFY_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+
+const CMD = { setDateTime:0x01, phoneName:0x04, autoHRPref:0x16, realtimeHR:0x1e,
+              autoHRVPref:0x38, syncHRV:0x39, prefWrite:0x02 };
+
+let writeChar=null, notifyChar=null, device=null;
+let hrvSamples={};         // minuteOfDay -> hrv
+let collecting=false;
+let liveHR=null;
+
+const $ = id => document.getElementById(id);
+const logEl = $("log");
+function log(line){ logEl.textContent += line + "\n"; logEl.scrollTop = logEl.scrollHeight; }
+function setStatus(t, cls=""){ const s=$("status"); s.textContent=t; s.className="status "+cls; }
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+const hex = arr => Array.from(arr).map(b=>b.toString(16).padStart(2,"0")).join(" ");
+
+// monta frame de 16 bytes com checksum (Σ dos 15 primeiros) & 0xff
+function frame(content){
+  const buf = new Uint8Array(16);
+  for(let i=0;i<Math.min(content.length,15);i++) buf[i]=content[i];
+  let cs=0; for(let i=0;i<15;i++) cs=(cs+buf[i])&0xff;
+  buf[15]=cs; return buf;
+}
+function bcd(v){ return ((Math.floor((v%100)/10))<<4) | (v%10); }
+function setDateTimeBytes(){
+  const d=new Date();
+  return [CMD.setDateTime, bcd(d.getFullYear()%2000), bcd(d.getMonth()+1),
+          bcd(d.getDate()), bcd(d.getHours()), bcd(d.getMinutes()), bcd(d.getSeconds())];
+}
+function syncHRVBytes(daysAgo){
+  const d=daysAgo>>>0;
+  return [CMD.syncHRV, d&0xff, (d>>8)&0xff, (d>>16)&0xff, (d>>24)&0xff];
+}
+
+async function send(content){
+  const f = frame(content);
+  try { await writeChar.writeValueWithoutResponse(f); }
+  catch(e){ await writeChar.writeValue(f); }
+  log("→ "+hex(f));
+}
+
+// ===== Conexão =====
+$("btnConnect").onclick = async () => {
+  if(!navigator.bluetooth){ setStatus("Esse navegador não tem Web Bluetooth. Use o Bluefy (iPhone) ou Chrome/Edge.","err"); return; }
+  try{
+    setStatus("Abrindo seletor de Bluetooth…");
+    device = await navigator.bluetooth.requestDevice({
+      acceptAllDevices:true, optionalServices:[SERVICE_V1, SERVICE_V2]
+    });
+    setStatus("Conectando ao "+(device.name||"anel")+"…");
+    device.addEventListener("gattserverdisconnected", ()=>setStatus("Anel desconectado.","err"));
+    const server = await device.gatt.connect();
+    let service;
+    try { service = await server.getPrimaryService(SERVICE_V1); }
+    catch(e){ service = await server.getPrimaryService(SERVICE_V2); }
+    writeChar  = await service.getCharacteristic(WRITE_UUID);
+    notifyChar = await service.getCharacteristic(NOTIFY_UUID);
+    await notifyChar.startNotifications();
+    notifyChar.addEventListener("characteristicvaluechanged", onNotify);
+    setStatus("Conectado ao "+(device.name||"anel")+" ✓","ok");
+    $("btnHRV").disabled=false; $("btnHR").disabled=false; $("btnEnable").disabled=false;
+  }catch(e){ setStatus("Falha: "+e.message,"err"); log("ERRO: "+e); }
+};
+
+// ===== Recebe pacotes =====
+function onNotify(ev){
+  const dv = ev.target.value;
+  const b = new Uint8Array(dv.byteLength);
+  for(let i=0;i<dv.byteLength;i++) b[i]=dv.getUint8(i);
+  log("← "+hex(b));
+  if(b.length!==16) return;
+  // valida checksum
+  let cs=0; for(let i=0;i<15;i++) cs=(cs+b[i])&0xff;
+  if(cs!==b[15]) { log("  (checksum inválido, ignorado)"); return; }
+
+  if(b[0]===CMD.syncHRV && collecting) decodeHRVPage(b);
+  if(b[0]===CMD.realtimeHR){ const bpm=b[1]; if(bpm>=30&&bpm<=220){ liveHR=bpm; setStatus("FC ao vivo: "+bpm+" bpm","ok"); } }
+}
+
+function decodeHRVPage(v){
+  const packetNr=v[1];
+  if(packetNr===0xff || packetNr===0) return;            // vazio / cabeçalho
+  const startIndex = packetNr===1 ? 3 : 2;
+  let minutesPrev = 0;
+  if(packetNr>1) minutesPrev = 12*30 + (packetNr-2)*13*30;
+  for(let i=startIndex;i<15;i++){
+    const hrv=v[i];
+    if(hrv===0) continue;
+    const minute = minutesPrev + (i-startIndex)*30;
+    hrvSamples[minute]=hrv;
+  }
+}
+
+// ===== Puxar HRV =====
+$("btnHRV").onclick = async () => {
+  hrvSamples={}; collecting=true;
+  $("resultCard").style.display="none";
+  setStatus("Sincronizando relógio e pedindo HRV…");
+  await send([CMD.phoneName,0x02,0x0a,0x50,0x4c]);   await sleep(250);
+  await send(setDateTimeBytes());                    await sleep(250);
+  await send(syncHRVBytes(0));                        await sleep(2500); // hoje
+  await send(syncHRVBytes(1));                        await sleep(2500); // ontem
+  collecting=false;
+  renderHRV();
+};
+
+function renderHRV(){
+  const minutes = Object.keys(hrvSamples).map(Number).sort((a,b)=>a-b);
+  $("resultCard").style.display="block";
+  if(minutes.length===0){
+    $("resultPill").textContent="HRV vazio";
+    $("avg").innerHTML='<span style="color:var(--warn)">Nenhum HRV retornado</span>';
+    $("tableWrap").innerHTML='<p class="hint">O anel não devolveu HRV. Veja o log técnico: se vieram pacotes 0x39 só com 0xff, o firmware do R10 não guarda HRV por esse caminho. Rode o teste de FC ao vivo pra confirmar que o Bluetooth está OK.</p>';
+    setStatus("HRV vazio — ver resultado","warn");
+    return;
+  }
+  // média noturna = janelas entre 00:00 e 08:00
+  const night = minutes.filter(m=>m>=0 && m<=8*60).map(m=>hrvSamples[m]);
+  const avg = night.length ? Math.round(night.reduce((a,b)=>a+b,0)/night.length) : null;
+  $("resultPill").textContent = minutes.length+" leituras";
+  $("avg").innerHTML = avg!==null
+    ? avg+' <small>ms · média 00–08h ('+night.length+' leituras)</small>'
+    : '— <small>sem leituras na janela noturna</small>';
+  let rows="";
+  for(const m of minutes){
+    const hh=String(Math.floor(m/60)).padStart(2,"0"), mm=String(m%60).padStart(2,"0");
+    rows+=`<tr><td>${hh}:${mm}</td><td class="v">${hrvSamples[m]}</td></tr>`;
+  }
+  $("tableWrap").innerHTML=`<table><tr><th>Hora</th><th style="text-align:right">HRV (ms)</th></tr>${rows}</table>`;
+  setStatus("HRV recebido ✓","ok");
+}
+
+// ===== FC ao vivo (liveness) =====
+$("btnHR").onclick = async () => {
+  setStatus("Iniciando FC ao vivo… encoste o anel bem no dedo");
+  liveHR=null;
+  await send([CMD.realtimeHR,0x01]);
+  await sleep(10000);
+  await send([CMD.realtimeHR,0x02]);
+  setStatus(liveHR!==null ? "FC ao vivo OK ("+liveHR+" bpm) — Bluetooth funcionando ✓"
+                          : "Não veio FC ao vivo (anel solto ou frio). Tente de novo.", liveHR!==null?"ok":"warn");
+};
+
+// ===== Ligar HRV pras próximas noites =====
+$("btnEnable").onclick = async () => {
+  await send([CMD.autoHRVPref, CMD.prefWrite, 0x01]);
+  await send([CMD.autoHRPref, CMD.prefWrite, 0x01, 0x05]); // HR de fundo a cada 5min (ajuda o HRV)
+  setStatus("HRV ligado no anel. A partir desta noite ele acumula HRV. ✓","ok");
+};
+
+// ===== Copiar resultado =====
+$("btnCopy").onclick = async () => {
+  const minutes = Object.keys(hrvSamples).map(Number).sort((a,b)=>a-b);
+  let txt = "RESULTADO PROVA HRV — Anel "+(device?.name||"R10")+"\n";
+  txt += "Leituras HRV: "+minutes.length+"\n";
+  for(const m of minutes){
+    const hh=String(Math.floor(m/60)).padStart(2,"0"), mm=String(m%60).padStart(2,"0");
+    txt += `${hh}:${mm} = ${hrvSamples[m]} ms\n`;
+  }
+  txt += "\n--- LOG TÉCNICO ---\n"+logEl.textContent;
+  try{ await navigator.clipboard.writeText(txt); setStatus("Resultado copiado ✓","ok"); }
+  catch(e){ setStatus("Copie manualmente do log técnico.","warn"); }
+};
+</script>
+</body>
+</html>
