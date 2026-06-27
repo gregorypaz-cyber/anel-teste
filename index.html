@@ -88,6 +88,7 @@ pre{background:#090b10;border:1px solid var(--line);border-radius:8px;padding:8p
 <div class="hdr">
   <div class="dot" id="dot"></div>
   <h1>Reck · Anel R10</h1>
+  <span id="battBadge" style="margin-left:auto;font-size:11px;color:var(--muted);display:none">🔋 —</span>
 </div>
 
 <!-- CONEXÃO -->
@@ -122,6 +123,7 @@ pre{background:#090b10;border:1px solid var(--line);border-radius:8px;padding:8p
   <button class="btn sec sm" id="btnHRV7"  disabled>📈 Só HRV — 7 dias</button>
   <button class="btn sec sm" id="btnHR"    disabled>❤️ Só FC histórica</button>
   <button class="btn sec sm" id="btnSleep" disabled>🌙 Só Sono</button>
+  <button class="btn sec sm" id="btnSpo2"  disabled>🫁 SpO2 noturna</button>
   <button class="btn sec sm" id="btnTemp"  disabled>🌡️ Temperatura noturna</button>
   <button class="btn sec sm" id="btnDiag"  disabled>🔬 Diagnóstico sono (3 ranges)</button>
 </div>
@@ -186,6 +188,18 @@ pre{background:#090b10;border:1px solid var(--line);border-radius:8px;padding:8p
 </div>
 
 <!-- DIAGNÓSTICO SONO -->
+<div class="card" id="cardSpo2" style="display:none">
+  <h2>🫁 SpO2 noturno <span class="tag pend" id="tagSpo2">a verificar</span></h2>
+  <p class="hint">Saturação de oxigênio média durante o sono (00h–06h). &lt;95% noturno é sinal de alerta.</p>
+  <div class="g3" id="kpiSpo2"></div>
+  <div id="badgesSpo2"></div>
+  <div id="spo2Alert" style="display:none;margin-top:10px;padding:10px 12px;background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.3);border-radius:10px;font-size:12px;color:var(--bad)"></div>
+  <details style="margin-top:8px">
+    <summary>Ver leituras por hora</summary>
+    <table><tr><th>Hora</th><th class="r">SpO2 (%)</th></tr><tbody id="tblSpo2"></tbody></table>
+  </details>
+</div>
+
 <div class="card" id="cardTemp" style="display:none">
   <h2>🌡️ Temperatura de Pele <span class="tag pend" id="tagTemp">a verificar</span></h2>
   <p class="hint">Temperatura noturna (skin temp 00h–06h). O que importa é o <b>desvio do seu baseline</b>, não o valor absoluto.</p>
@@ -250,6 +264,8 @@ let hrSamples=[], sleepBuf=[], sleepExpected=0;
 let collectHRV=false, collectHR=false, curDay=-1;
 let diagMode=false, diagBuf=[], diagExpected=0;
 let tempMode=false, tempBuf=[], tempExpected=0;
+let spo2Mode=false, spo2Buf=[], spo2Expected=0;
+let batteryPct=null;
 let sensValue=null;
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -383,11 +399,12 @@ $("btnConnect").onclick=async()=>{
     $("dot").className="dot on";stConn("✓ Conectado a "+(device.name||"R10"),"ok");
     enableBtns(true);
     await send([CMD.name,0x02,0x0a,0x52,0x4b]);await wait(200);
-    await send(dtBytes());
+    await send(dtBytes());await wait(200);
+    await send([0x03,0x00]); // pedir bateria
   }catch(e){stConn("Falha: "+e.message,"err");}
 };
 function enableBtns(on){
-  ["btnAll","btnHRV7","btnHR","btnSleep","btnTemp","btnDiag"].forEach(id=>$(id).disabled=!on);
+  ["btnAll","btnHRV7","btnHR","btnSleep","btnSpo2","btnTemp","btnDiag"].forEach(id=>$(id).disabled=!on);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -402,6 +419,17 @@ function onN1(ev){
   if(cs!==b[15]){log("  (cksum inválido)");return;}
   if(b[0]===CMD.syncHRV&&collectHRV)decodeHRVPkt(b);
   if(b[0]===CMD.syncHR&&collectHR)decodeHRPkt(b);
+  // bateria: b[0]=0x03, b[1]=percent (resposta ao request 0x03)
+  if(b[0]===0x03&&b[1]>=0&&b[1]<=100){batteryPct=b[1];updateBattery();}
+  // bateria via notificação: b[0]=0x??, b[1]=0x03, b[2]=percent
+  if(b[1]===0x03&&b[2]>=0&&b[2]<=100&&b[0]!==CMD.syncHRV){batteryPct=b[2];updateBattery();}
+}
+function updateBattery(){
+  if(batteryPct==null)return;
+  const el=$("battBadge");el.style.display="inline";
+  const icon=batteryPct>=70?"🔋":batteryPct>=30?"🪫":"⚠️";
+  const col=batteryPct>=30?"var(--good)":batteryPct>=15?"var(--warn)":"var(--bad)";
+  el.textContent=icon+" "+batteryPct+"%";el.style.color=col;
 }
 function decodeHRVPkt(v){
   const nr=v[1];if(nr===0xff||nr===0)return;
@@ -424,6 +452,12 @@ function onN2(ev){
   log("← bigdata "+hex(b));
   // roteamento por modo (diag tem prioridade)
   if(diagMode){diagBuf.push(...b);return;}
+  if(spo2Mode){
+    if(spo2Buf.length===0&&b[0]===CMD.big)spo2Expected=(b[2]|(b[3]<<8))+6;
+    spo2Buf.push(...b);
+    if(spo2Expected>0&&spo2Buf.length>=spo2Expected)decodeSpo2();
+    return;
+  }
   if(tempMode){
     if(tempBuf.length===0&&b[0]===CMD.big)tempExpected=(b[2]|(b[3]<<8))+6;
     tempBuf.push(...b);
@@ -739,21 +773,8 @@ function renderTemp(readings){
     badge(night.length+" noturnas",night.length>=6?"ok":"warn")+
     (blAvg?badge("baseline "+blAvg+"°C","muted"):"");
 
-  // detector de doença (precisa de deviation + HRV + RHR)
-  if(deviation!=null&&deviation>=0.3){
-    const rhrToday=hrSamples.filter(s=>s.minute<=9*60||s.minute>=21*60);
-    const rhr=rhrToday.length?Math.min(...rhrToday.map(s=>s.bpm)):null;
-    const zepp=ZEPP[daysAgoToISO(0)];
-    const hrv=C6(ringHRV[0]??{});
-    const flags=[];
-    if(deviation>=0.3)flags.push(`🌡️ Temp +${deviation}°C acima do baseline`);
-    if(rhr&&zepp?.rhr&&rhr>zepp.rhr+5)flags.push(`❤️ RHR elevada (${rhr} bpm)`);
-    if(hrv&&hrv<42)flags.push(`📉 C6 baixo (${hrv}ms)`);
-    if(flags.length>=2){
-      $("illnessAlert").style.display="block";
-      $("illnessAlert").innerHTML="⚠️ <b>Sinais de queda imunológica detectados:</b><br>"+flags.join("<br>");
-    }
-  }
+  // detector de doença centralizado (atualizado com todos os sinais disponíveis)
+  updateIllnessDetector();
 
   // tabela por hora
   const tb=$("tblTemp");tb.innerHTML="";
@@ -781,6 +802,117 @@ async function pullSleep(){
 // ═══════════════════════════════════════════════════════════════════════
 // DIAGNÓSTICO SONO (3 ranges)
 // ═══════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════
+// DECODER E RENDER DE SpO2
+// ═══════════════════════════════════════════════════════════════════════
+
+function decodeSpo2(){
+  try{
+    const v=spo2Buf;
+    log("SpO2 buffer: "+v.length+" bytes");
+    if(v.length<8){renderSpo2Empty("buffer curto ("+v.length+"b)");return;}
+    const length=(v[2]|(v[3]<<8));
+    if(length<10){renderSpo2Empty("payload insuficiente ("+length+"b)");return;}
+    let idx=6;const readings=[];let daysAgo=-1;
+    while(idx<v.length&&daysAgo!==0){
+      daysAgo=v[idx++];
+      const dayStart=new Date();dayStart.setHours(0,0,0,0);
+      dayStart.setDate(dayStart.getDate()-daysAgo);
+      for(let hour=0;hour<=23;hour++){
+        if(idx+1>=v.length)break;
+        const lo=v[idx++],hi=v[idx++];
+        // Gate: SpO2 válido = 85-100%
+        if(lo>0&&hi>0){
+          const mean=Math.round((lo+hi)/2);
+          if(mean>=85&&mean<=100)
+            readings.push({min:daysAgo===0?hour*60:null,hour,pct:mean,daysAgo});
+        }
+        if(idx-6>=length)break;
+      }
+      if(daysAgo===0)break;
+    }
+    if(!readings.length){renderSpo2Empty("firmware não retornou leituras de SpO2");return;}
+    const tonight=readings.filter(r=>r.daysAgo===0);
+    renderSpo2(tonight.length?tonight:readings);
+  }catch(e){log("decodeSpo2 ERR: "+e.message);renderSpo2Empty("erro: "+e.message);}
+}
+
+function renderSpo2Empty(why){
+  $("cardSpo2").style.display="block";
+  $("tagSpo2").textContent="⚠️ vazio";$("tagSpo2").className="tag warn";
+  $("kpiSpo2").innerHTML=`<div class="kpi" style="grid-column:1/-1"><div class="kpi-l">Resultado</div><div class="hint">${why}</div></div>`;
+}
+
+function renderSpo2(){
+  // aceita array de leituras {hour, pct}
+  const readings=arguments[0];
+  $("cardSpo2").style.display="block";
+  // janela noturna 00h-06h
+  const night=readings.filter(r=>r.hour>=0&&r.hour<=6);
+  const avgNight=night.length?Math.round(night.reduce((s,r)=>s+r.pct,0)/night.length):null;
+  const minPct=readings.length?Math.min(...readings.map(r=>r.pct)):null;
+  const leituras=readings.length;
+  $("kpiSpo2").innerHTML=
+    kpi("Média noturna (00–06h)",avgNight!=null?avgNight:"-","%")+
+    kpi("Mínimo da noite",minPct!=null?minPct:"-","%")+
+    kpi("Leituras",leituras);
+  // badges + alertas
+  const ok=avgNight!=null&&avgNight>=95;
+  const warn=avgNight!=null&&avgNight>=90&&avgNight<95;
+  const bad=avgNight!=null&&avgNight<90;
+  $("tagSpo2").textContent=avgNight!=null?avgNight+"%":"—";
+  $("tagSpo2").className="tag "+(ok?"ok":warn?"warn":"pend");
+  $("badgesSpo2").innerHTML=
+    (avgNight!=null?badge(avgNight+"% média noturna",ok?"ok":warn?"warn":"bad"):"")+
+    (minPct!=null?badge(minPct+"% mínimo",minPct>=95?"ok":minPct>=90?"warn":"bad"):"")+
+    badge(leituras+" leituras","muted");
+  // alerta se baixo
+  if(bad){
+    $("spo2Alert").style.display="block";
+    $("spo2Alert").innerHTML="⚠️ SpO2 média noturna <90% — pode indicar apneia do sono ou problema respiratório. Consulte um médico se persistir.";
+  } else if(warn){
+    $("spo2Alert").style.display="block";
+    $("spo2Alert").innerHTML="⚠️ SpO2 média noturna "+avgNight+"% (ideal ≥95%). Monitorar nos próximos dias.";
+  }
+  // atualiza illness detector
+  updateIllnessDetector();
+  // tabela
+  const tb=$("tblSpo2");tb.innerHTML="";
+  readings.forEach(r=>{
+    const tr=document.createElement("tr");
+    const col=r.pct>=95?"color:var(--good)":r.pct>=90?"color:var(--warn)":"color:var(--bad)";
+    tr.innerHTML=`<td>${String(r.hour).padStart(2,"0")}:00${r.hour<=6?" 🌙":""}</td><td class="r" style="${col}">${r.pct}</td>`;
+    tb.appendChild(tr);
+  });
+  stData("SpO2 recebida ✅","ok");
+}
+
+// Illness detector centralizado (chamado quando qualquer sinal muda)
+function updateIllnessDetector(){
+  try{
+    // coleta todos os sinais disponíveis
+    const spo2El=$("kpiSpo2");const spo2Avg=spo2El?parseInt(spo2El.querySelector(".kpi-v")?.textContent):null;
+    const tempDev=tempHistory.length?tempHistory[tempHistory.length-1]?.nightAvg:null;
+    const c6hoje=C6(ringHRV[0]??{});
+    const zepp=ZEPP[daysAgoToISO(0)];
+    const rhrSono=hrSamples.filter(s=>s.minute<=360||s.minute>=21*60);
+    const rhr=rhrSono.length?Math.min(...rhrSono.map(s=>s.bpm)):null;
+    const flags=[];
+    // gate triplo
+    if(c6hoje!=null&&c6hoje<42)flags.push("📉 HRV baixo (C6="+c6hoje+"ms, threshold 42ms)");
+    if(rhr!=null&&zepp?.rhr&&rhr>(zepp.rhr+5))flags.push("❤️ FC repouso elevada ("+rhr+"bpm vs "+zepp.rhr+"bpm habitual)");
+    if(spo2Avg!=null&&spo2Avg<95)flags.push("🫁 SpO2 noturna baixa ("+spo2Avg+"%, ideal ≥95%)");
+    // a temp só entra com baseline (desvio)
+    // por ora usamos o tempHistory para ver se avg>36.2 (skin temp elevada = possível febre leve)
+    if(tempDev!=null&&tempDev>36.0)flags.push("🌡️ Temperatura de pele elevada ("+tempDev.toFixed(1)+"°C média noturna)");
+    const el=$("illnessAlert");
+    if(flags.length>=2&&el){
+      el.style.display="block";
+      el.innerHTML="⚠️ <b>Sinais de queda imunológica ("+flags.length+" indicadores):</b><br>"+flags.join("<br>")+"<br><span style='color:var(--muted);font-size:10px'>Gate: 2+ indicadores simultâneos. Não é diagnóstico médico.</span>";
+    }
+  }catch(e){log("illnessDetector ERR: "+e.message);}
+}
+
 async function pullTemp(){
   if(!cmdChar){stData("SVC2 ausente — temperatura não disponível.","warn");return;}
   // habilita monitoramento contínuo de temperatura no anel
@@ -793,6 +925,20 @@ async function pullTemp(){
   await wait(8000); // big-data leva mais tempo
   tempMode=false;
   if(!tempBuf.length)renderTempEmpty("nenhum pacote em 8s — firmware do R10 pode não suportar via BLE");
+  $("cardCopy").style.display="block";
+}
+
+async function pullSpo2(){
+  if(!cmdChar){stData("SVC2 ausente — SpO2 não disponível.","warn");return;}
+  // habilita monitoramento contínuo de SpO2 (autoSpo2Pref 0x2C)
+  await send([0x2C,0x02,0x01]); await wait(300);
+  spo2Buf=[];spo2Expected=0;spo2Mode=true;
+  setP(77);stData("SpO2: puxando histórico noturno…");
+  const ok=await sendRaw([0xBC,0x2A,0x01,0x00,0xFF,0x00,0xFF]);
+  if(!ok){stData("Falha ao pedir SpO2.","err");spo2Mode=false;return;}
+  await wait(8000);
+  spo2Mode=false;
+  if(!spo2Buf.length)renderSpo2Empty("nenhum pacote em 8s — firmware pode não suportar SpO2 via BLE");
   $("cardCopy").style.display="block";
 }
 
@@ -848,6 +994,7 @@ $("btnAll").onclick=async()=>{
     await pullHRV7();await wait(300);
     await pullHR();await wait(300);
     await pullSleep();await wait(300);
+    await pullSpo2();await wait(300);
     await pullTemp();
     setP(100);stData("Sync completo ✅","ok");
     $("cardCopy").style.display="block";
@@ -860,6 +1007,7 @@ $("btnAll").onclick=async()=>{
 $("btnHRV7").onclick=async()=>{try{await pullHRV7();$("cardCopy").style.display="block";}catch(e){stData("Erro HRV: "+e.message,"err");}};
 $("btnHR").onclick=async()=>{try{await pullHR();$("cardCopy").style.display="block";}catch(e){stData("Erro FC: "+e.message,"err");}};
 $("btnSleep").onclick=async()=>{try{await pullSleep();$("cardCopy").style.display="block";}catch(e){stData("Erro sono: "+e.message,"err");}};
+$("btnSpo2").onclick=async()=>{try{await pullSpo2();}catch(e){stData("Erro SpO2: "+e.message,"err");}};
 $("btnTemp").onclick=async()=>{try{await pullTemp();}catch(e){stData("Erro temp: "+e.message,"err");}};
 $("btnDiag").onclick=async()=>{try{await runDiag();}catch(e){stData("Erro diag: "+e.message,"err");}};
 
@@ -885,6 +1033,8 @@ $("btnCopy").onclick=async()=>{
   }
   txt+="\n=== FC HISTÓRICA ===\n";
   hrSamples.forEach(s=>{const hh=String(Math.floor(s.minute/60)).padStart(2,"0"),mm=String(s.minute%60).padStart(2,"0");txt+=`${hh}:${mm}=${s.bpm} `;});
+  txt+="\n\n=== SPO2 ===\n";
+  txt+=$("kpiSpo2").innerText.replace(/\n+/g," | ")+"\n";
   txt+="\n\n=== SONO ===\n";
   txt+=$("kpiSleep1").innerText.replace(/\n+/g," | ")+"\n";
   txt+=$("kpiSleep2").innerText.replace(/\n+/g," | ")+"\n";
