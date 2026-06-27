@@ -122,6 +122,7 @@ pre{background:#090b10;border:1px solid var(--line);border-radius:8px;padding:8p
   <button class="btn sec sm" id="btnHRV7"  disabled>📈 Só HRV — 7 dias</button>
   <button class="btn sec sm" id="btnHR"    disabled>❤️ Só FC histórica</button>
   <button class="btn sec sm" id="btnSleep" disabled>🌙 Só Sono</button>
+  <button class="btn sec sm" id="btnTemp"  disabled>🌡️ Temperatura noturna</button>
   <button class="btn sec sm" id="btnDiag"  disabled>🔬 Diagnóstico sono (3 ranges)</button>
 </div>
 
@@ -185,6 +186,18 @@ pre{background:#090b10;border:1px solid var(--line);border-radius:8px;padding:8p
 </div>
 
 <!-- DIAGNÓSTICO SONO -->
+<div class="card" id="cardTemp" style="display:none">
+  <h2>🌡️ Temperatura de Pele <span class="tag pend" id="tagTemp">a verificar</span></h2>
+  <p class="hint">Temperatura noturna (skin temp 00h–06h). O que importa é o <b>desvio do seu baseline</b>, não o valor absoluto.</p>
+  <div class="g3" id="kpiTemp"></div>
+  <div id="badgesTemp"></div>
+  <div id="illnessAlert" style="display:none;margin-top:10px;padding:10px 12px;background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.3);border-radius:10px;font-size:12px;color:var(--bad)"></div>
+  <details style="margin-top:8px">
+    <summary>Ver leituras por hora</summary>
+    <table><tr><th>Hora</th><th class="r">Temp (°C)</th></tr><tbody id="tblTemp"></tbody></table>
+  </details>
+</div>
+
 <div class="card" id="cardDiag" style="display:none">
   <h2>🔬 Diagnóstico Sono — 3 ranges</h2>
   <div id="diagResults"></div>
@@ -236,6 +249,7 @@ const ringHRV = {};
 let hrSamples=[], sleepBuf=[], sleepExpected=0;
 let collectHRV=false, collectHR=false, curDay=-1;
 let diagMode=false, diagBuf=[], diagExpected=0;
+let tempMode=false, tempBuf=[], tempExpected=0;
 let sensValue=null;
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -373,7 +387,7 @@ $("btnConnect").onclick=async()=>{
   }catch(e){stConn("Falha: "+e.message,"err");}
 };
 function enableBtns(on){
-  ["btnAll","btnHRV7","btnHR","btnSleep","btnDiag"].forEach(id=>$(id).disabled=!on);
+  ["btnAll","btnHRV7","btnHR","btnSleep","btnTemp","btnDiag"].forEach(id=>$(id).disabled=!on);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -408,7 +422,17 @@ function onN2(ev){
   const b=new Uint8Array(ev.target.value.byteLength);
   for(let i=0;i<b.length;i++)b[i]=ev.target.value.getUint8(i);
   log("← bigdata "+hex(b));
-  if(diagMode){diagBuf.push(...b);if(diagBuf.length===0&&b[0]===CMD.big)diagExpected=(b[2]|(b[3]<<8))+6;return;}
+  // roteamento por modo (diag tem prioridade)
+  if(diagMode){diagBuf.push(...b);return;}
+  if(tempMode){
+    if(tempBuf.length===0&&b[0]===CMD.big)tempExpected=(b[2]|(b[3]<<8))+6;
+    tempBuf.push(...b);
+    if(tempExpected>0&&tempBuf.length>=tempExpected)decodeTemp();
+    return;
+  }
+  // sono: roteamento por subtype (byte[1]: 0x27=sleep, 0x25=temp)
+  const subtype=b[1]??0;
+  if(b[0]===CMD.big&&subtype===0x25){tempBuf.push(...b);return;} // resposta de temp perdida sem modo
   if(sleepBuf.length===0&&b[0]===CMD.big)sleepExpected=(b[2]|(b[3]<<8))+6;
   sleepBuf.push(...b);
   if(sleepExpected>0&&sleepBuf.length>=sleepExpected)decodeSleep(sleepBuf,false);
@@ -628,6 +652,118 @@ async function pullHR(){
   stData("FC concluída ✅","ok");
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// DECODER E RENDER DE TEMPERATURA
+// ═══════════════════════════════════════════════════════════════════════
+
+// Baseline de temperatura (últimas N noites) — acumulado em memória
+// Estrutura: [{date: ISO, nightAvg: float, min: float, max: float}]
+const tempHistory = [];
+
+function decodeTemp(){
+  try{
+    const v=tempBuf;
+    log("Temp buffer: "+v.length+" bytes");
+    if(v.length<8){renderTempEmpty("buffer muito curto ("+v.length+"b)");return;}
+    const length=(v[2]|(v[3]<<8));
+    if(length<50){renderTempEmpty("payload insuficiente ("+length+"b < 50b mínimo)");return;}
+    let idx=6;
+    const readings=[]; // {minuteOfDay, celsius}
+    let daysAgo=-1;
+    while(idx<v.length){
+      if(idx>=v.length)break;
+      daysAgo=v[idx++];
+      if(daysAgo===0&&readings.length>0)break; // só queremos hoje (daysAgo=0)
+      idx++; // byte desconhecido (0x1e observado)
+      for(let hour=0;hour<=23;hour++){
+        if(idx+1>=v.length)break;
+        const t00=v[idx++],t30=v[idx++];
+        if(t00>0)readings.push({min:hour*60,       c:t00/10.0+20.0});
+        if(t30>0)readings.push({min:hour*60+30,    c:t30/10.0+20.0});
+        if(idx-6>=length)break;
+      }
+      if(daysAgo===0)break;
+    }
+    if(!readings.length){renderTempEmpty("firmware não retornou leituras de temperatura");return;}
+    renderTemp(readings);
+  }catch(e){log("decodeTemp ERR: "+e.message);renderTempEmpty("erro de decode: "+e.message);}
+}
+
+function renderTempEmpty(why){
+  $("cardTemp").style.display="block";
+  $("tagTemp").textContent="⚠️ vazio";$("tagTemp").className="tag warn";
+  $("kpiTemp").innerHTML=`<div class="kpi" style="grid-column:1/-1"><div class="kpi-l">Resultado</div><div class="hint">${why}</div></div>`;
+}
+
+function renderTemp(readings){
+  $("cardTemp").style.display="block";
+  // noturna: 00h-06h (0-360 min)
+  const night=readings.filter(r=>r.min<=360);
+  const day=readings;
+  const avgNight=night.length?+(night.reduce((s,r)=>s+r.c,0)/night.length).toFixed(2):null;
+  const minTemp=readings.length?+Math.min(...readings.map(r=>r.c)).toFixed(1):null;
+  const maxTemp=readings.length?+Math.max(...readings.map(r=>r.c)).toFixed(1):null;
+  const tempNow=readings[readings.length-1]?.c;
+
+  // guarda no histórico
+  const isoToday=new Date().toISOString().slice(0,10);
+  const existing=tempHistory.findIndex(t=>t.date===isoToday);
+  const entry={date:isoToday,nightAvg:avgNight,min:minTemp,max:maxTemp,leituras:readings.length};
+  if(existing>=0)tempHistory[existing]=entry;else tempHistory.push(entry);
+
+  // desvio do baseline (últimas 5 noites com dados)
+  const baseline=tempHistory.filter(t=>t.date!==isoToday&&t.nightAvg!=null).slice(-5);
+  const blAvg=baseline.length>=3?+(baseline.reduce((s,t)=>s+t.nightAvg,0)/baseline.length).toFixed(2):null;
+  const deviation=blAvg&&avgNight?+(avgNight-blAvg).toFixed(2):null;
+
+  // render KPIs
+  const devStr=deviation!=null?(deviation>=0?"+":"")+deviation+"°C":"—";
+  const devCls=deviation==null?"":deviation>=0.3?"bad":deviation<=-0.3?"ok":"muted";
+  $("kpiTemp").innerHTML=
+    kpi("Média noturna (00–06h)",avgNight!=null?avgNight.toFixed(1):"—","°C")+
+    kpi("Min / Max",minTemp&&maxTemp?minTemp+"/"+maxTemp:"—","°C")+
+    kpi("Desvio baseline",devStr);
+
+  // tag
+  const hasBaseline=blAvg!=null;
+  $("tagTemp").textContent=hasBaseline?`baseline ${blAvg}°C`:"acumulando baseline";
+  $("tagTemp").className="tag "+(hasBaseline?"ok":"pend");
+
+  // badges
+  $("badgesTemp").innerHTML=
+    badge(readings.length+" leituras",readings.length>=20?"ok":"warn")+
+    badge(night.length+" noturnas",night.length>=6?"ok":"warn")+
+    (blAvg?badge("baseline "+blAvg+"°C","muted"):"");
+
+  // detector de doença (precisa de deviation + HRV + RHR)
+  if(deviation!=null&&deviation>=0.3){
+    const rhrToday=hrSamples.filter(s=>s.minute<=9*60||s.minute>=21*60);
+    const rhr=rhrToday.length?Math.min(...rhrToday.map(s=>s.bpm)):null;
+    const zepp=ZEPP[daysAgoToISO(0)];
+    const hrv=C6(ringHRV[0]??{});
+    const flags=[];
+    if(deviation>=0.3)flags.push(`🌡️ Temp +${deviation}°C acima do baseline`);
+    if(rhr&&zepp?.rhr&&rhr>zepp.rhr+5)flags.push(`❤️ RHR elevada (${rhr} bpm)`);
+    if(hrv&&hrv<42)flags.push(`📉 C6 baixo (${hrv}ms)`);
+    if(flags.length>=2){
+      $("illnessAlert").style.display="block";
+      $("illnessAlert").innerHTML="⚠️ <b>Sinais de queda imunológica detectados:</b><br>"+flags.join("<br>");
+    }
+  }
+
+  // tabela por hora
+  const tb=$("tblTemp");tb.innerHTML="";
+  readings.forEach(r=>{
+    const hh=String(Math.floor(r.min/60)).padStart(2,"0"),mm=String(r.min%60).padStart(2,"0");
+    const isNight=r.min<=360;
+    const tr=document.createElement("tr");
+    if(isNight)tr.style.background="rgba(79,140,255,.05)";
+    tr.innerHTML=`<td>${hh}:${mm}${isNight?" 🌙":""}</td><td class="r">${r.c.toFixed(1)}</td>`;
+    tb.appendChild(tr);
+  });
+  stData("Temperatura recebida ✅","ok");
+}
+
 async function pullSleep(){
   if(!cmdChar){stData("SVC2 ausente — sono não disponível.","warn");return;}
   sleepBuf=[];sleepExpected=0;
@@ -641,6 +777,21 @@ async function pullSleep(){
 // ═══════════════════════════════════════════════════════════════════════
 // DIAGNÓSTICO SONO (3 ranges)
 // ═══════════════════════════════════════════════════════════════════════
+async function pullTemp(){
+  if(!cmdChar){stData("SVC2 ausente — temperatura não disponível.","warn");return;}
+  // habilita monitoramento contínuo de temperatura no anel
+  await send([0x3A,0x03,0x02,0x01]);
+  await wait(300);
+  tempBuf=[];tempExpected=0;tempMode=true;
+  setP(82);stData("Temperatura: puxando histórico…");
+  const ok=await sendRaw([0xBC,0x25,0x01,0x00,0x3E,0x81,0x02]);
+  if(!ok){stData("Falha ao pedir temperatura.","err");tempMode=false;return;}
+  await wait(8000); // big-data leva mais tempo
+  tempMode=false;
+  if(!tempBuf.length)renderTempEmpty("nenhum pacote em 8s — firmware do R10 pode não suportar via BLE");
+  $("cardCopy").style.display="block";
+}
+
 async function runDiag(){
   if(!cmdChar){stData("SVC2 ausente.","warn");return;}
   $("cardDiag").style.display="block";$("diagResults").innerHTML="";
@@ -692,7 +843,8 @@ $("btnAll").onclick=async()=>{
     setP(5);stData("Sync completo — iniciando…");
     await pullHRV7();await wait(300);
     await pullHR();await wait(300);
-    await pullSleep();
+    await pullSleep();await wait(300);
+    await pullTemp();
     setP(100);stData("Sync completo ✅","ok");
     $("cardCopy").style.display="block";
   }catch(e){
@@ -704,6 +856,7 @@ $("btnAll").onclick=async()=>{
 $("btnHRV7").onclick=async()=>{try{await pullHRV7();$("cardCopy").style.display="block";}catch(e){stData("Erro HRV: "+e.message,"err");}};
 $("btnHR").onclick=async()=>{try{await pullHR();$("cardCopy").style.display="block";}catch(e){stData("Erro FC: "+e.message,"err");}};
 $("btnSleep").onclick=async()=>{try{await pullSleep();$("cardCopy").style.display="block";}catch(e){stData("Erro sono: "+e.message,"err");}};
+$("btnTemp").onclick=async()=>{try{await pullTemp();}catch(e){stData("Erro temp: "+e.message,"err");}};
 $("btnDiag").onclick=async()=>{try{await runDiag();}catch(e){stData("Erro diag: "+e.message,"err");}};
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -731,6 +884,11 @@ $("btnCopy").onclick=async()=>{
   txt+="\n\n=== SONO ===\n";
   txt+=$("kpiSleep1").innerText.replace(/\n+/g," | ")+"\n";
   txt+=$("kpiSleep2").innerText.replace(/\n+/g," | ")+"\n";
+  txt+="\n=== TEMPERATURA ===\n";
+  txt+=$("kpiTemp").innerText.replace(/\n+/g," | ")+"\n";
+  if(tempHistory.length){
+    txt+="Histórico temp noturna: "+tempHistory.map(t=>t.date+"="+t.nightAvg+"°C").join(" · ")+"\n";
+  }
   try{await navigator.clipboard.writeText(txt);stData("Copiado ✓","ok");}
   catch{stData("Copie do log técnico.","warn");}
 };
