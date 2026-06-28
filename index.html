@@ -246,13 +246,14 @@ const STAGE = {light:0x02,deep:0x03,rem:0x04,awake:0x05};
 // Atualizar esta tabela semanalmente com novos check-ins
 // ═══════════════════════════════════════════════════════════════════════
 const ZEPP = {
+  // Atualizar toda segunda-feira com os últimos 7 dias do Base44
+  "2026-06-28":{hrv:54, rhr:57, note:"gripe + remédio + sono longo"},
   "2026-06-27":{hrv:40, rhr:66, note:"dormiu tarde"},
   "2026-06-26":{hrv:51, rhr:55},
   "2026-06-25":{hrv:52, rhr:56},
   "2026-06-24":{hrv:53, rhr:56, note:"anel solto dia 1"},
   "2026-06-23":{hrv:71, rhr:58},
   "2026-06-22":{hrv:54, rhr:58},
-  "2026-06-21":{hrv:58, rhr:56},
 };
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -266,6 +267,7 @@ let diagMode=false, diagBuf=[], diagExpected=0;
 let tempMode=false, tempBuf=[], tempExpected=0;
 let spo2Mode=false, spo2Buf=[], spo2Expected=0;
 let batteryPct=null;
+let lastSpo2={avg:null,min:null}; // persiste entre renders para o illness detector
 let sensValue=null;
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -874,6 +876,8 @@ function renderSpo2(){
     $("spo2Alert").style.display="block";
     $("spo2Alert").innerHTML="⚠️ SpO2 média noturna "+avgNight+"% (ideal ≥95%). Monitorar nos próximos dias.";
   }
+  // persiste valores para o illness detector
+  lastSpo2={avg:avgNight, min:minPct};
   // atualiza illness detector
   updateIllnessDetector();
   // tabela
@@ -891,7 +895,8 @@ function renderSpo2(){
 function updateIllnessDetector(){
   try{
     // coleta todos os sinais disponíveis
-    const spo2El=$("kpiSpo2");const spo2Avg=spo2El?parseInt(spo2El.querySelector(".kpi-v")?.textContent):null;
+    // SpO2: usa variável de estado (mais robusto que ler DOM)
+    const spo2Avg=lastSpo2.avg; const spo2Min=lastSpo2.min;
     const tempDev=tempHistory.length?tempHistory[tempHistory.length-1]?.nightAvg:null;
     const c6hoje=C6(ringHRV[0]??{});
     const zepp=ZEPP[daysAgoToISO(0)];
@@ -901,10 +906,17 @@ function updateIllnessDetector(){
     // gate triplo
     if(c6hoje!=null&&c6hoje<42)flags.push("📉 HRV baixo (C6="+c6hoje+"ms, threshold 42ms)");
     if(rhr!=null&&zepp?.rhr&&rhr>(zepp.rhr+5))flags.push("❤️ FC repouso elevada ("+rhr+"bpm vs "+zepp.rhr+"bpm habitual)");
-    if(spo2Avg!=null&&spo2Avg<95)flags.push("🫁 SpO2 noturna baixa ("+spo2Avg+"%, ideal ≥95%)");
-    // a temp só entra com baseline (desvio)
-    // por ora usamos o tempHistory para ver se avg>36.2 (skin temp elevada = possível febre leve)
-    if(tempDev!=null&&tempDev>36.0)flags.push("🌡️ Temperatura de pele elevada ("+tempDev.toFixed(1)+"°C média noturna)");
+    if(spo2Avg!=null&&spo2Avg<95)flags.push("🫁 SpO2 média noturna "+spo2Avg+"% (ideal ≥95%)");
+    if(spo2Min!=null&&spo2Min<93)flags.push("🫁 SpO2 mínima "+spo2Min+"% (threshold <93% = alarme)");
+    // temperatura: com baseline (5+ noites) usa desvio; sem baseline usa delta vs noite anterior
+    if(tempHistory.length>=2){
+      const sorted=[...tempHistory].sort((a,b)=>a.date<b.date?-1:1);
+      const ontem=sorted[sorted.length-2]?.nightAvg; const hoje=sorted[sorted.length-1]?.nightAvg;
+      const delta=ontem&&hoje?+(hoje-ontem).toFixed(2):null;
+      if(delta!=null&&delta>=0.3)flags.push("🌡️ Temperatura subiu +"+delta+"°C vs ontem ("+hoje.toFixed(1)+"°C hoje vs "+ontem.toFixed(1)+"°C ontem)");
+    } else if(tempDev!=null&&tempDev>36.2){
+      flags.push("🌡️ Temperatura noturna elevada ("+tempDev.toFixed(1)+"°C, acima de 36.2°C)");
+    }
     const el=$("illnessAlert");
     if(flags.length>=2&&el){
       el.style.display="block";
