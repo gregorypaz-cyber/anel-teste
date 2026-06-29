@@ -715,6 +715,7 @@ function decodeTemp(){
     if(length<50){renderTempEmpty("payload insuficiente ("+length+"b < 50b mínimo)");return;}
     let idx=6;
     const readings=[]; // {minuteOfDay, celsius}
+    const rawObs=[];   // toda leitura crua não-zero, mesmo fora do gate (p/ calibrar offset)
     let daysAgo=-1;
     while(idx<v.length){
       if(idx>=v.length)break;
@@ -728,13 +729,26 @@ function decodeTemp(){
         // Abaixo de 33°C = anel saiu do dedo (byte baixo não-zero)
         // Acima de 38.5°C = febre/artefato de movimento
         const c00=t00/10.0+20.0, c30=t30/10.0+20.0;
+        if(t00>0)rawObs.push({b:t00,c:c00}); if(t30>0)rawObs.push({b:t30,c:c30});
         if(t00>0&&c00>=33.0&&c00<=38.5)readings.push({min:hour*60,    c:c00});
         if(t30>0&&c30>=33.0&&c30<=38.5)readings.push({min:hour*60+30, c:c30});
         if(idx-6>=length)break;
       }
       if(daysAgo===0)break;
     }
-    if(!readings.length){renderTempEmpty("firmware não retornou leituras de temperatura");return;}
+    if(!readings.length){
+      if(rawObs.length){
+        const cs=rawObs.map(o=>o.c), bs=rawObs.map(o=>o.b);
+        const msg="Recebi "+rawObs.length+" leituras cruas (bytes "+Math.min(...bs)+"–"+Math.max(...bs)
+          +" → "+Math.min(...cs).toFixed(1)+"–"+Math.max(...cs).toFixed(1)+"°C com offset +20), mas "
+          +"TODAS caíram fora do gate 33–38.5°C. Offset provavelmente errado — anota os bytes crus e calibra.";
+        log("⚠️ TEMP fora do gate: "+msg);
+        renderTempEmpty(msg);
+      } else {
+        renderTempEmpty("firmware não retornou temperatura (0 bytes não-zero — anel pode não expor via BLE)");
+      }
+      return;
+    }
     renderTemp(readings);
   }catch(e){log("decodeTemp ERR: "+e.message);renderTempEmpty("erro de decode: "+e.message);}
 }
