@@ -402,7 +402,17 @@ $("btnConnect").onclick=async()=>{
     enableBtns(true);
     await send([CMD.name,0x02,0x0a,0x52,0x4b]);await wait(200);
     await send(dtBytes());await wait(200);
-    await send([0x03,0x00]); // pedir bateria
+    await send([0x03,0x00]);await wait(200); // pedir bateria
+    // ── LIGA REGISTRO CONTÍNUO (all-day) ──────────────────────────────────
+    // Sem isto o anel NÃO grava HRV/FC de fundo → sync volta ralo/vazio.
+    // ⚠️ Só afeta noites FUTURAS — não recria retroativamente o que já passou.
+    log("Ligando registro contínuo (HRV/FC/SpO2/temp/stress)…");
+    await send([0x38,0x02,0x01]);     await wait(200); // autoHRV ON
+    await send([0x16,0x02,0x01,0x05]);await wait(200); // auto-FC ON, 5 min (flag on=01/off=02!)
+    await send([0x2C,0x02,0x01]);     await wait(200); // autoSpO2 ON
+    await send([0x36,0x02,0x01]);     await wait(200); // autoStress ON
+    await send([0x3A,0x03,0x02,0x01]);await wait(200); // autoTemp ON (byte 0x03 extra)
+    stConn("✓ Conectado + registro contínuo ligado","ok");
   }catch(e){stConn("Falha: "+e.message,"err");}
 };
 function enableBtns(on){
