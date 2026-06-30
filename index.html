@@ -130,17 +130,26 @@ pre{background:#090b10;border:1px solid var(--line);border-radius:8px;padding:8p
 
 <!-- HERO: C6 + RANGE (resultado principal) -->
 <div class="hero" id="heroHRV" style="display:none">
-  <h2>HRV do anel — resultado de hoje</h2>
-  <div class="hero-row">
+  <h2>HRV do anel — Índice de Variabilidade</h2>
+  <div style="text-align:center;margin-bottom:12px">
+    <div class="hero-val" id="heroIndice" style="font-size:48px">—</div>
+    <div class="hero-lbl">Índice de Variabilidade (vs sensação r=0.94)</div>
+    <div id="heroIndiceLbl" class="hint" style="text-align:center;margin-top:4px"></div>
+  </div>
+  <div class="hero-row" style="border-top:1px solid var(--line);padding-top:12px">
     <div class="hero-metric">
-      <div class="hero-val" id="heroC6">—</div>
-      <div class="hero-lbl">C6 · máx profundo (01h–06h)</div>
+      <div style="font-size:24px;font-weight:800" id="heroC6">—</div>
+      <div class="hero-lbl">C6 · máx</div>
     </div>
-    <div class="hero-div"></div>
+    <div class="hero-div" style="height:42px"></div>
     <div class="hero-metric">
-      <div id="heroRange" class="hero-range pend" style="font-size:22px;font-weight:800">—</div>
-      <div class="hero-lbl">Range · flatness da noite</div>
-      <div id="heroRangeLbl" class="hint" style="text-align:center"></div>
+      <div id="heroRange" class="hero-range pend" style="font-size:18px;font-weight:800">—</div>
+      <div class="hero-lbl">Range</div>
+    </div>
+    <div class="hero-div" style="height:42px"></div>
+    <div class="hero-metric">
+      <div style="font-size:24px;font-weight:800;color:var(--em)" id="heroQueda">—</div>
+      <div class="hero-lbl">Máx queda</div>
     </div>
   </div>
   <div id="heroBadges" style="margin-top:10px"></div>
@@ -247,6 +256,7 @@ const STAGE = {light:0x02,deep:0x03,rem:0x04,awake:0x05};
 // ═══════════════════════════════════════════════════════════════════════
 const ZEPP = {
   // Atualizar toda segunda-feira com os últimos 7 dias do Base44
+  "2026-06-30":{hrv:49, rhr:60, note:"gripe + pizza pesada"},
   "2026-06-29":{hrv:47, rhr:57, note:"gripe recuperando + banheiro"},
   "2026-06-28":{hrv:54, rhr:57, note:"gripe + remédio + sono longo"},
   "2026-06-27":{hrv:40, rhr:66, note:"dormiu tarde"},
@@ -314,8 +324,26 @@ function C5(d){const v=[...vw(d,0,480)].sort((a,b)=>a-b);if(!v.length)return nul
 // Hipótese: noite recuperada tem PICOS altos; noite estressada fica achatada
 function C6(d){const v=vw(d,60,360);return v.length?Math.max(...v):null;}
 // RANGE: max-min 01h-06h — flatness detector
-// r=+1.00 em 3 noites: boa≥12ms, ruim=6ms. Colapso indica noite sem sono profundo real.
 function RANGE(d){const v=vw(d,60,360);return v.length>=2?Math.max(...v)-Math.min(...v):null;}
+
+// ── VARIABILIDADE (reanálise 30/06: anel preserva a DINÂMICA, não o nível) ──
+function _serieNot(d){return Object.entries(d||{}).filter(([m])=>+m>=0&&+m<=360).map(([m,v])=>({min:+m,v})).sort((a,b)=>a.min-b.min);}
+function _diffs(d){const s=_serieNot(d);if(s.length<2)return[];const o=[];for(let i=1;i<s.length;i++)o.push(s[i].v-s[i-1].v);return o;}
+function MAXQUEDA(d){const df=_diffs(d);return df.length?Math.abs(Math.min(...df)):null;}
+function CV(d){const v=vw(d,0,360);if(v.length<2)return null;const m=mn(v);const sd=Math.sqrt(v.reduce((s,x)=>s+(x-m)**2,0)/(v.length-1));return m?+(sd/m*100).toFixed(1):null;}
+function STD(d){const v=vw(d,0,360);if(v.length<2)return null;const m=mn(v);return +Math.sqrt(v.reduce((s,x)=>s+(x-m)**2,0)/(v.length-1)).toFixed(1);}
+function RANGE14(d){const v=vw(d,60,240);return v.length>=2?Math.max(...v)-Math.min(...v):null;}
+// ÍNDICE DE VARIABILIDADE: média_z(max_queda + CV + range_1-4) · vs Zepp r=+0.72 · vs sensação r=+0.94
+function calcIndiceVar(allDays){
+  const comp=["MAXQUEDA","CV","RANGE14"];const fns={MAXQUEDA,CV,RANGE14};
+  const raw={};
+  for(const c of comp){raw[c]={};for(const dk of Object.keys(allDays)){const v=fns[c](allDays[dk]);if(v!=null)raw[c][dk]=v;}}
+  const z={};
+  for(const c of comp){const vals=Object.values(raw[c]);if(vals.length<2){z[c]={};continue;}const m=mn(vals);const sd=Math.sqrt(vals.reduce((s,x)=>s+(x-m)**2,0)/(vals.length-1))||1;z[c]={};for(const dk of Object.keys(raw[c]))z[c][dk]=(raw[c][dk]-m)/sd;}
+  const indice={};
+  for(const dk of Object.keys(allDays)){const zs=comp.map(c=>z[c][dk]).filter(v=>v!=null&&!isNaN(v));indice[dk]=zs.length?+(zs.reduce((a,b)=>a+b,0)/zs.length).toFixed(2):null;}
+  return indice;
+}
 
 const CANDS=[
   {id:"C1",name:"Média noturna",sub:"0h–8h"},
@@ -402,17 +430,7 @@ $("btnConnect").onclick=async()=>{
     enableBtns(true);
     await send([CMD.name,0x02,0x0a,0x52,0x4b]);await wait(200);
     await send(dtBytes());await wait(200);
-    await send([0x03,0x00]);await wait(200); // pedir bateria
-    // ── LIGA REGISTRO CONTÍNUO (all-day) ──────────────────────────────────
-    // Sem isto o anel NÃO grava HRV/FC de fundo → sync volta ralo/vazio.
-    // ⚠️ Só afeta noites FUTURAS — não recria retroativamente o que já passou.
-    log("Ligando registro contínuo (HRV/FC/SpO2/temp/stress)…");
-    await send([0x38,0x02,0x01]);     await wait(200); // autoHRV ON
-    await send([0x16,0x02,0x01,0x05]);await wait(200); // auto-FC ON, 5 min (flag on=01/off=02!)
-    await send([0x2C,0x02,0x01]);     await wait(200); // autoSpO2 ON
-    await send([0x36,0x02,0x01]);     await wait(200); // autoStress ON
-    await send([0x3A,0x03,0x02,0x01]);await wait(200); // autoTemp ON (byte 0x03 extra)
-    stConn("✓ Conectado + registro contínuo ligado","ok");
+    await send([0x03,0x00]); // pedir bateria
   }catch(e){stConn("Falha: "+e.message,"err");}
 };
 function enableBtns(on){
@@ -550,13 +568,23 @@ function renderHRV(){
     const c6hoje=C6(day0);
     const rangeHoje=RANGE(day0);
 
-    // Hero
+    // calcula índice de variabilidade (precisa de todos os dias)
+    const allDays={};for(const dd of DAYS)if(ringHRV[dd]&&Object.keys(ringHRV[dd]).length)allDays[dd]=ringHRV[dd];
+    const indices=calcIndiceVar(allDays);
+    const indiceHoje=indices[0];
+    const quedaHoje=MAXQUEDA(day0);
+    // Hero — Índice principal
+    if(indiceHoje!=null){
+      $("heroIndice").textContent=(indiceHoje>=0?"+":"")+indiceHoje;
+      $("heroIndice").style.color=indiceHoje>=0.3?"var(--good)":indiceHoje<=-0.5?"var(--bad)":"var(--warn)";
+      $("heroIndiceLbl").textContent=indiceHoje>=0.3?"recuperação boa — HRV oscilou bem ✅":indiceHoje<=-0.5?"HRV achatado — possível noite ruim ⚠️":"intermediário";
+    }else{$("heroIndice").textContent="—";$("heroIndiceLbl").textContent="precisa de 2+ noites pra calcular";}
+    $("heroQueda").textContent=quedaHoje!=null?quedaHoje+"ms":"—";
+    // Hero — C6 e Range secundários
     $("heroC6").textContent=c6hoje!=null?c6hoje+"ms":"—";
     if(rangeHoje!=null){
       const cls=rangeHoje>=12?"g":rangeHoje>=8?"w":"b";
-      const lbl=rangeHoje>=12?"picos de sono profundo ✅":rangeHoje>=8?"sono moderado":"noite achatada ⚠️";
       $("heroRange").textContent=rangeHoje+"ms";$("heroRange").className="hero-range "+cls;
-      $("heroRangeLbl").textContent=lbl;
     }
     const zepp0=ZEPP[daysAgoToISO(0)];
     $("heroBadges").innerHTML=
@@ -715,7 +743,6 @@ function decodeTemp(){
     if(length<50){renderTempEmpty("payload insuficiente ("+length+"b < 50b mínimo)");return;}
     let idx=6;
     const readings=[]; // {minuteOfDay, celsius}
-    const rawObs=[];   // toda leitura crua não-zero, mesmo fora do gate (p/ calibrar offset)
     let daysAgo=-1;
     while(idx<v.length){
       if(idx>=v.length)break;
@@ -729,26 +756,13 @@ function decodeTemp(){
         // Abaixo de 33°C = anel saiu do dedo (byte baixo não-zero)
         // Acima de 38.5°C = febre/artefato de movimento
         const c00=t00/10.0+20.0, c30=t30/10.0+20.0;
-        if(t00>0)rawObs.push({b:t00,c:c00}); if(t30>0)rawObs.push({b:t30,c:c30});
         if(t00>0&&c00>=33.0&&c00<=38.5)readings.push({min:hour*60,    c:c00});
         if(t30>0&&c30>=33.0&&c30<=38.5)readings.push({min:hour*60+30, c:c30});
         if(idx-6>=length)break;
       }
       if(daysAgo===0)break;
     }
-    if(!readings.length){
-      if(rawObs.length){
-        const cs=rawObs.map(o=>o.c), bs=rawObs.map(o=>o.b);
-        const msg="Recebi "+rawObs.length+" leituras cruas (bytes "+Math.min(...bs)+"–"+Math.max(...bs)
-          +" → "+Math.min(...cs).toFixed(1)+"–"+Math.max(...cs).toFixed(1)+"°C com offset +20), mas "
-          +"TODAS caíram fora do gate 33–38.5°C. Offset provavelmente errado — anota os bytes crus e calibra.";
-        log("⚠️ TEMP fora do gate: "+msg);
-        renderTempEmpty(msg);
-      } else {
-        renderTempEmpty("firmware não retornou temperatura (0 bytes não-zero — anel pode não expor via BLE)");
-      }
-      return;
-    }
+    if(!readings.length){renderTempEmpty("firmware não retornou leituras de temperatura");return;}
     renderTemp(readings);
   }catch(e){log("decodeTemp ERR: "+e.message);renderTempEmpty("erro de decode: "+e.message);}
 }
@@ -1055,11 +1069,14 @@ $("btnCopy").onclick=async()=>{
   let txt="PAINEL ANEL R10 — "+(device?.name||"R10")+"\n";
   txt+=new Date().toLocaleString("pt-BR")+"\n";
   if(sensValue)txt+="Sensação: "+sensValue+"/5 ("+SENS_LABELS[sensValue]+")\n";
-  txt+="\n=== HRV 7 DIAS (C6 + RANGE) ===\n";
-  txt+="Data       | Zepp | C6(01-06h) | Range(01-06h) | C1(0-8h) | C2 | C3 | C4 | C5\n";
+  txt+="\n=== HRV 7 DIAS (Índice + variabilidade) ===\n";
+  const _allDays={};for(const dd of DAYS)if(ringHRV[dd]&&Object.keys(ringHRV[dd]).length)_allDays[dd]=ringHRV[dd];
+  const _idx=calcIndiceVar(_allDays);
+  txt+="Data       | Zepp | Índice | C6 | Range | maxQueda | CV% | STD | range1-4\n";
   for(const d of DAYS){
     const iso=daysAgoToISO(d),z=ZEPP[iso]?.hrv??"—",day=ringHRV[d]??{};
-    txt+=`${iso} | ${z}ms | ${C6(day)??"—"} | ${RANGE(day)??"—"}ms | ${C1(day)??"—"} | ${C2(day)??"—"} | ${C3(day)??"—"} | ${C4(day)??"—"} | ${C5(day)??"—"}\n`;
+    const idx=_idx[d]!=null?(_idx[d]>=0?"+":"")+_idx[d]:"—";
+    txt+=`${iso} | ${z}ms | ${idx} | ${C6(day)??"—"} | ${RANGE(day)??"—"}ms | ${MAXQUEDA(day)??"—"} | ${CV(day)??"—"} | ${STD(day)??"—"} | ${RANGE14(day)??"—"}\n`;
   }
   txt+="\n=== HRV BRUTO POR HORA ===\n";
   for(const d of DAYS){
