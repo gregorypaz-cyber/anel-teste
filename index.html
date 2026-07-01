@@ -250,6 +250,11 @@ const N2_UUID = "de5bf729-d711-4e47-af26-65e3012a5dc7";
 const CMD = {dt:0x01,name:0x04,autoHR:0x16,syncHR:0x15,syncHRV:0x39,autoHRV:0x38,prefW:0x02,big:0xBC};
 const STAGE = {light:0x02,deep:0x03,rem:0x04,awake:0x05};
 
+const HRV_SLOT_MIN  = 10;   // ms — abaixo disso é artefato
+const HRV_SLOT_MAX  = 200;  // ms — acima disso é artefato
+const NIGHT_MIN_SLOTS = 6;  // mínimo de slots válidos na janela 01h–06h (min 60–360)
+                             // para considerar a noite "ok"
+
 // ═══════════════════════════════════════════════════════════════════════
 // DADOS ZEPP (Base44) — 7 dias
 // Atualizar esta tabela semanalmente com novos check-ins
@@ -326,6 +331,17 @@ function C6(d){const v=vw(d,60,360);return v.length?Math.max(...v):null;}
 // RANGE: max-min 01h-06h — flatness detector
 function RANGE(d){const v=vw(d,60,360);return v.length>=2?Math.max(...v)-Math.min(...v):null;}
 
+const QUALITY_BADGE = { ok: '✅', low: '⚠️ poucos slots', discarded: '⛔ descartada' };
+// Retorna 'ok', 'low' ou 'discarded'
+// Conta slots válidos na janela de sono profundo (01h–06h = min 60–360)
+function nightQuality(day) {
+  const slots = Object.entries(day || {})
+    .filter(([m, v]) => +m >= 60 && +m <= 360 && v >= HRV_SLOT_MIN && v <= HRV_SLOT_MAX);
+  if (slots.length === 0)             return 'discarded';
+  if (slots.length < NIGHT_MIN_SLOTS) return 'low';
+  return 'ok';
+}
+
 // ── VARIABILIDADE (reanálise 30/06: anel preserva a DINÂMICA, não o nível) ──
 function _serieNot(d){return Object.entries(d||{}).filter(([m])=>+m>=0&&+m<=360).map(([m,v])=>({min:+m,v})).sort((a,b)=>a.min-b.min);}
 function _diffs(d){const s=_serieNot(d);if(s.length<2)return[];const o=[];for(let i=1;i<s.length;i++)o.push(s[i].v-s[i-1].v);return o;}
@@ -336,8 +352,15 @@ function RANGE14(d){const v=vw(d,60,240);return v.length>=2?Math.max(...v)-Math.
 // ÍNDICE DE VARIABILIDADE: média_z(max_queda + CV + range_1-4) · vs Zepp r=+0.72 · vs sensação r=+0.94
 function calcIndiceVar(allDays){
   const comp=["MAXQUEDA","CV","RANGE14"];const fns={MAXQUEDA,CV,RANGE14};
+  const okDays={};
+  for(const dk of Object.keys(allDays)){
+    const q=nightQuality(allDays[dk]);
+    if(q==='discarded')continue; // não polui o Índice
+    if(q==='low')console.warn('[anel] noite de baixa qualidade incluída no Índice:', dk, ringHRV[dk] && Object.keys(ringHRV[dk]).length, 'slots');
+    okDays[dk]=allDays[dk];
+  }
   const raw={};
-  for(const c of comp){raw[c]={};for(const dk of Object.keys(allDays)){const v=fns[c](allDays[dk]);if(v!=null)raw[c][dk]=v;}}
+  for(const c of comp){raw[c]={};for(const dk of Object.keys(okDays)){const v=fns[c](okDays[dk]);if(v!=null)raw[c][dk]=v;}}
   const z={};
   for(const c of comp){const vals=Object.values(raw[c]);if(vals.length<2){z[c]={};continue;}const m=mn(vals);const sd=Math.sqrt(vals.reduce((s,x)=>s+(x-m)**2,0)/(vals.length-1))||1;z[c]={};for(const dk of Object.keys(raw[c]))z[c][dk]=(raw[c][dk]-m)/sd;}
   const indice={};
@@ -465,7 +488,7 @@ function decodeHRVPkt(v){
   const nr=v[1];if(nr===0xff||nr===0)return;
   if(!ringHRV[curDay])ringHRV[curDay]={};
   const start=nr===1?3:2,base=nr===1?0:(12*30+(nr-2)*13*30);
-  for(let i=start;i<15;i++){const h=v[i];if(!h)continue;ringHRV[curDay][base+(i-start)*30]=h;}
+  for(let i=start;i<15;i++){const h=v[i];if(!h || h < HRV_SLOT_MIN || h > HRV_SLOT_MAX)continue;ringHRV[curDay][base+(i-start)*30]=h;}
 }
 function decodeHRPkt(v){
   const nr=v[1];if(nr===0xff||nr===0)return;
@@ -617,9 +640,10 @@ function renderHRV(){
       const c6v=C6(day),rng=RANGE(day),c1v=C1(day);
       const dir=dirs[d]??{t:"—",c:"color:var(--muted)"};
       const rngCls=rng==null?"":rng>=12?"color:var(--good)":rng>=8?"color:var(--warn)":"color:var(--bad)";
+      const q=nightQuality(day);
       const tr=document.createElement("tr");
       if(d===0)tr.className="today";
-      tr.innerHTML=`<td>${fmtDate(iso)}${d===0?" ◀":""}</td>
+      tr.innerHTML=`<td>${fmtDate(iso)}${d===0?" ◀":""} ${QUALITY_BADGE[q]}</td>
         <td class="r">${zepp!=null?zepp:"—"}</td>
         <td class="r" style="color:var(--accent);font-weight:${d===0?700:400}">${c6v!=null?c6v:"—"}</td>
         <td class="r" style="${rngCls};font-weight:${d===0?700:400}">${rng!=null?rng+"ms":"—"}</td>
