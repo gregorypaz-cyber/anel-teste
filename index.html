@@ -259,16 +259,20 @@ const NIGHT_MIN_SLOTS = 6;  // mínimo de slots válidos na janela 01h–06h (mi
 // DADOS ZEPP (Base44) — 7 dias
 // Atualizar esta tabela semanalmente com novos check-ins
 // ═══════════════════════════════════════════════════════════════════════
+// Campos do CHECK-IN do Reck (Base44). Preencher toda segunda com os últimos 7 dias.
+// Usados no ALVO DE RECOVERY composto (sensação + físio):
+//   sensação 1-5: mood, energy, stress, fatigue(0-100 ou 1-5), sore
+//   físio: rhr, sleep_hr (bpm médio no sono), sscore (sleep_score 0-100)
 const ZEPP = {
-  // Atualizar toda segunda-feira com os últimos 7 dias do Base44
-  "2026-06-30":{hrv:49, rhr:60, note:"gripe + pizza pesada"},
-  "2026-06-29":{hrv:47, rhr:57, note:"gripe recuperando + banheiro"},
-  "2026-06-28":{hrv:54, rhr:57, note:"gripe + remédio + sono longo"},
-  "2026-06-27":{hrv:40, rhr:66, note:"dormiu tarde"},
-  "2026-06-26":{hrv:51, rhr:55},
-  "2026-06-25":{hrv:52, rhr:56},
-  "2026-06-24":{hrv:53, rhr:56, note:"anel solto dia 1"},
-  "2026-06-23":{hrv:71, rhr:58},
+  "2026-07-01":{hrv:48, rhr:60, mood:4, energy:4, stress:3, fatigue:0, sore:1, sleep_hr:61, sscore:79, note:"recup gripe + banheiro"},
+  "2026-06-30":{hrv:49, rhr:60, mood:4, energy:4, stress:2, fatigue:0, sore:1, sleep_hr:63, sscore:78, note:"gripe + pizza pesada"},
+  "2026-06-29":{hrv:47, rhr:57, mood:4, energy:4, stress:1, fatigue:0, sore:1, sleep_hr:64, sscore:79, note:"gripe recuperando + banheiro"},
+  "2026-06-28":{hrv:54, rhr:57, mood:3, energy:3, stress:1, fatigue:0, sore:1, sleep_hr:61, sscore:87, note:"gripe + remédio + sono longo"},
+  "2026-06-27":{hrv:40, rhr:66, mood:2, energy:2, stress:3, fatigue:0, sore:1, sleep_hr:67, sscore:67, note:"dormiu tarde"},
+  "2026-06-26":{hrv:51, rhr:55, mood:5, energy:5, stress:1, fatigue:0, sore:1, sleep_hr:57, sscore:86, note:"acordou de madrugada"},
+  "2026-06-25":{hrv:52, rhr:56, mood:5, energy:5, stress:1, fatigue:0, sore:1, sleep_hr:61, sscore:85},
+  "2026-06-24":{hrv:53, rhr:56, mood:5, energy:5, stress:1, fatigue:0, sore:1, sleep_hr:59, sscore:85, note:"anel solto dia 1"},
+  "2026-06-23":{hrv:71, rhr:58, mood:5, energy:5, stress:1, fatigue:0, sore:1, sleep_hr:59, sscore:72},
 };
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -349,7 +353,10 @@ function MAXQUEDA(d){const df=_diffs(d);return df.length?Math.abs(Math.min(...df
 function CV(d){const v=vw(d,0,360);if(v.length<2)return null;const m=mn(v);const sd=Math.sqrt(v.reduce((s,x)=>s+(x-m)**2,0)/(v.length-1));return m?+(sd/m*100).toFixed(1):null;}
 function STD(d){const v=vw(d,0,360);if(v.length<2)return null;const m=mn(v);return +Math.sqrt(v.reduce((s,x)=>s+(x-m)**2,0)/(v.length-1)).toFixed(1);}
 function RANGE14(d){const v=vw(d,60,240);return v.length>=2?Math.max(...v)-Math.min(...v):null;}
-// ÍNDICE DE VARIABILIDADE: média_z(max_queda + CV + range_1-4) · vs Zepp r=+0.72 · vs sensação r=+0.94
+// ÍNDICE DE VARIABILIDADE — pesos validados contra recovery composto do Reck (n=7):
+//   maxQueda 50% · CV 25% · range1-4 25%  →  r=+0.92 · ρ=+0.82 (vs 1/3 cada: r=+0.86)
+// maxQueda sozinho é o melhor componente (r=+0.94), por isso recebe metade do peso.
+const INDICE_PESOS={MAXQUEDA:0.50,CV:0.25,RANGE14:0.25};
 function calcIndiceVar(allDays){
   const comp=["MAXQUEDA","CV","RANGE14"];const fns={MAXQUEDA,CV,RANGE14};
   const okDays={};
@@ -364,8 +371,51 @@ function calcIndiceVar(allDays){
   const z={};
   for(const c of comp){const vals=Object.values(raw[c]);if(vals.length<2){z[c]={};continue;}const m=mn(vals);const sd=Math.sqrt(vals.reduce((s,x)=>s+(x-m)**2,0)/(vals.length-1))||1;z[c]={};for(const dk of Object.keys(raw[c]))z[c][dk]=(raw[c][dk]-m)/sd;}
   const indice={};
-  for(const dk of Object.keys(allDays)){const zs=comp.map(c=>z[c][dk]).filter(v=>v!=null&&!isNaN(v));indice[dk]=zs.length?+(zs.reduce((a,b)=>a+b,0)/zs.length).toFixed(2):null;}
+  for(const dk of Object.keys(allDays)){
+    let soma=0,peso=0;
+    for(const c of comp){const zv=z[c][dk];if(zv!=null&&!isNaN(zv)){soma+=INDICE_PESOS[c]*zv;peso+=INDICE_PESOS[c];}}
+    indice[dk]=peso?+(soma/peso).toFixed(2):null; // renormaliza se faltar componente
+  }
   return indice;
+}
+
+// ── ALVO DE RECOVERY COMPOSTO (do check-in do Reck) ──────────────────────────
+// sensação (mood+energy − stress−fatigue−sore) + físio (−rhr −sleep_hr +sscore)
+// É contra ISTO que o anel valida: Índice vs composto → r=+0.86..0.92 (IC não cruza 0)
+function _zByKey(days,getter){
+  const raw=days.map(getter);
+  const ok=raw.filter(v=>v!=null&&!isNaN(v));
+  if(ok.length<2)return raw.map(_=>0);
+  const m=mn(ok);const sd=Math.sqrt(ok.reduce((s,x)=>s+(x-m)**2,0)/(ok.length-1))||1;
+  return raw.map(v=>(v==null||isNaN(v))?0:(v-m)/sd);
+}
+function recoveryTarget(days){ // days = array de ISO; usa ZEPP[iso] (dados do check-in)
+  const g=f=>d=>{const v=ZEPP[d]?.[f];return v==null?null:+v;};
+  const zMood=_zByKey(days,g("mood")),zEner=_zByKey(days,g("energy")),
+        zStr =_zByKey(days,g("stress")),zFat=_zByKey(days,g("fatigue")),zSor=_zByKey(days,g("sore")),
+        zRhr =_zByKey(days,g("rhr")),zShr=_zByKey(days,g("sleep_hr")),zSsc=_zByKey(days,g("sscore"));
+  const out={};
+  days.forEach((d,i)=>{
+    const subj=(zMood[i]+zEner[i]-zStr[i]-zFat[i]-zSor[i])/5;
+    const phys=(-zRhr[i]-zShr[i]+zSsc[i])/3;
+    // só devolve se o dia tem pelo menos dados de sensação OU físio
+    const temSubj=ZEPP[d]&&(ZEPP[d].mood!=null||ZEPP[d].energy!=null);
+    const temPhys=ZEPP[d]&&(ZEPP[d].rhr!=null||ZEPP[d].sscore!=null);
+    out[d]=(temSubj||temPhys)?+((subj+phys)/2).toFixed(3):null;
+  });
+  return out;
+}
+// Pearson + Spearman + IC95% de Fisher (para o veredicto de validação)
+function _pearson(x,y){const n=x.length;if(n<2)return null;const mx=mn(x),my=mn(y);let sxy=0,sx=0,sy=0;for(let i=0;i<n;i++){sxy+=(x[i]-mx)*(y[i]-my);sx+=(x[i]-mx)**2;sy+=(y[i]-my)**2;}const den=Math.sqrt(sx*sy);return den?sxy/den:null;}
+function _rankArr(a){const idx=a.map((v,i)=>[v,i]).sort((p,q)=>p[0]-q[0]);const r=Array(a.length);idx.forEach(([,i],pos)=>r[i]=pos+1);return r;}
+function _spearman(x,y){return _pearson(_rankArr(x),_rankArr(y));}
+function _fisherIC(r,n){if(n<=3||r==null)return[null,null];const z=Math.atanh(Math.max(-.999,Math.min(.999,r)));const se=1/Math.sqrt(n-3);return[+Math.tanh(z-1.96*se).toFixed(2),+Math.tanh(z+1.96*se).toFixed(2)];}
+// Confiança pelo n de noites válidas (é o ScoreConfidence: n baixo = IC largo)
+function _confianca(n){
+  if(n>=14)return{lbl:"alta",cls:"ok",nota:"amostra suficiente p/ promover"};
+  if(n>=8) return{lbl:"média",cls:"warn",nota:"tendência formando — continue logando"};
+  if(n>=4) return{lbl:"baixa",cls:"warn",nota:"piso mínimo — não promova ainda"};
+  return{lbl:"insuficiente",cls:"pend",nota:"precisa de 4+ noites"};
 }
 
 const CANDS=[
@@ -652,19 +702,31 @@ function renderHRV(){
       tbody.appendChild(tr);
     }
 
-    // veredicto e tag
-    const pares=DAYS.filter(d=>C6(ringHRV[d]??{})!=null&&ZEPP[daysAgoToISO(d)]?.hrv!=null);
-    const matchPct=matchTotal?Math.round(matchOk/matchTotal*100):null;
-    const deltas=pares.map(d=>Math.abs(C6(ringHRV[d])-ZEPP[daysAgoToISO(d)].hrv));
-    const avgDelta=deltas.length?Math.round(deltas.reduce((a,b)=>a+b)/deltas.length):null;
-    $("tagLog").textContent=`${pares.length}/7 noites · ${matchPct!=null?matchPct+"% concord.":"aguardando"}`;
-    $("tagLog").className="tag "+(matchPct>=70?"ok":matchPct>=50?"warn":"pend");
+    // ── VEREDICTO: valida o ÍNDICE do anel contra o RECOVERY COMPOSTO do check-in ──
+    // (antes validava C6 vs ZEPP.hrv — alvo errado, onde o RMSSD amortecido do anel
+    //  não tem sinal. Contra recovery real: r=+0.86..0.92, IC não cruza 0.)
+    const isoDias=DAYS.map(daysAgoToISO);
+    const tgt=recoveryTarget(isoDias);
+    const paresV=DAYS.filter(d=>indices[d]!=null&&tgt[daysAgoToISO(d)]!=null);
+    const xs=paresV.map(d=>indices[d]);
+    const ys=paresV.map(d=>tgt[daysAgoToISO(d)]);
+    const n=paresV.length;
+    const r=n>=2?_pearson(xs,ys):null;
+    const rho=n>=2?_spearman(xs,ys):null;
+    const ic=_fisherIC(r,n);
+    const conf=_confianca(n);
+    $("tagLog").textContent=`${n}/7 noites · confiança ${conf.lbl}`;
+    $("tagLog").className="tag "+conf.cls;
     let vt="";
-    if(matchPct==null)vt="Aguardando mais noites.";
-    else if(matchPct>=80&&avgDelta<=8)vt="✅ C6 rastreia o Zepp com boa precisão. Candidato validado.";
-    else if(matchPct>=60)vt="⚠️ C6 parcialmente alinhado. Continue logando.";
-    else vt="❌ C6 diverge do Zepp com frequência. Rever candidato.";
-    if(avgDelta!=null)vt+=` Δ médio: ${avgDelta}ms.`;
+    if(r==null){vt="Aguardando mais noites com check-in + anel.";}
+    else{
+      const icTxt=(ic[0]!=null)?` · IC95% [${ic[0]>=0?"+":""}${ic[0]}, ${ic[1]>=0?"+":""}${ic[1]}]`:"";
+      const forte = r>=0.6 && ic[0]!=null && ic[0]>0; // IC não cruza zero
+      const cabeca = forte ? "✅ Índice do anel prevê o recovery."
+                   : r>=0.4 ? "⚠️ Índice parcialmente alinhado ao recovery."
+                   :          "❌ Índice ainda diverge do recovery.";
+      vt=`${cabeca} r=${r>=0?"+":""}${r.toFixed(2)} · ρ=${rho>=0?"+":""}${rho.toFixed(2)}${icTxt}. ${conf.nota}.`;
+    }
     $("logVerdict").textContent=vt;
 
     // detalhe candidatos
