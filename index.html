@@ -203,6 +203,22 @@ pre{background:#090b10;border:1px solid var(--line);border-radius:8px;padding:8p
   <div class="g3" id="kpiSpo2"></div>
   <div id="badgesSpo2"></div>
   <div id="spo2Alert" style="display:none;margin-top:10px;padding:10px 12px;background:rgba(255,107,107,.1);border:1px solid rgba(255,107,107,.3);border-radius:10px;font-size:12px;color:var(--bad)"></div>
+
+<!-- ════════════════════════════════════════════════════════════════════ -->
+<!-- VALIDAÇÃO DA PISTA: composto C6 + SpO2 (só-anel) vs sensação          -->
+<!-- Acumula noite a noite em localStorage. ρ mostra se a pista confirma.   -->
+<!-- ════════════════════════════════════════════════════════════════════ -->
+</div>
+<div class="card" id="cardValidacao">
+  <h2>🧪 Validação C6 + SpO2 <span class="tag pend" id="tagValid">coletando</span></h2>
+  <p class="hint">Teste da hipótese: o recovery do anel = nível de HRV (C6) + SpO2, sem relógio. Precisa de ≥12 noites com pelo menos 3-4 ruins para decidir a migração.</p>
+  <div class="g3" id="kpiValid"></div>
+  <div id="validVerdict" class="hint" style="margin-top:8px"></div>
+  <details style="margin-top:8px">
+    <summary>Ver as noites registradas</summary>
+    <table><tr><th>Data</th><th class="r">C6</th><th class="r">SpO2</th><th class="r">Sens</th><th class="r">Recov</th></tr><tbody id="tblValid"></tbody></table>
+  </details>
+  <button class="btn sec sm" style="margin-top:8px" onclick="resetValidacao()">🗑️ Zerar histórico de validação</button>
   <details style="margin-top:8px">
     <summary>Ver leituras por hora</summary>
     <table><tr><th>Hora</th><th class="r">SpO2 (%)</th></tr><tbody id="tblSpo2"></tbody></table>
@@ -409,6 +425,111 @@ function recoveryTarget(days){ // days = array de ISO; usa ZEPP[iso] (dados do c
 function _pearson(x,y){const n=x.length;if(n<2)return null;const mx=mn(x),my=mn(y);let sxy=0,sx=0,sy=0;for(let i=0;i<n;i++){sxy+=(x[i]-mx)*(y[i]-my);sx+=(x[i]-mx)**2;sy+=(y[i]-my)**2;}const den=Math.sqrt(sx*sy);return den?sxy/den:null;}
 function _rankArr(a){const idx=a.map((v,i)=>[v,i]).sort((p,q)=>p[0]-q[0]);const r=Array(a.length);idx.forEach(([,i],pos)=>r[i]=pos+1);return r;}
 function _spearman(x,y){return _pearson(_rankArr(x),_rankArr(y));}
+
+// ═══════════════════════════════════════════════════════════════════════
+// TRACKER DE VALIDAÇÃO — composto C6+SpO2 (só-anel) vs sensação, noite a noite
+// Persiste em localStorage. Objetivo: ver se a pista da SpO2 confirma ou morre.
+// ═══════════════════════════════════════════════════════════════════════
+// CDF normal via aproximação de erf (Abramowitz-Stegun 7.1.26)
+function _erf(x){
+  const s=x<0?-1:1; x=Math.abs(x);
+  const a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=0.3275911;
+  const t=1/(1+p*x);
+  const y=1-(((((a5*t+a4)*t)+a3)*t+a2)*t+a1)*t*Math.exp(-x*x);
+  return s*y;
+}
+const VALID_KEY = "reckRingValidationLog";
+function _loadValid(){
+  try{ return JSON.parse(localStorage.getItem(VALID_KEY)||"[]"); }
+  catch(e){ return []; }
+}
+function _saveValid(log){
+  try{ localStorage.setItem(VALID_KEY, JSON.stringify(log)); }catch(e){}
+}
+// registra/atualiza a noite de hoje com o que estiver disponível (c6, spo2, sens)
+function upsertValidToday(){
+  const iso = daysAgoToISO(0);
+  const c6  = (typeof ringHRV!=="undefined" && ringHRV[0]) ? C6(ringHRV[0]) : null;
+  const spo2= (lastSpo2 && lastSpo2.avg!=null) ? lastSpo2.avg : null;
+  const sens= sensValue!=null ? sensValue : null;
+  const log = _loadValid();
+  let e = log.find(x=>x.date===iso);
+  if(!e){ e={date:iso,c6:null,spo2:null,sens:null}; log.push(e); }
+  if(c6!=null)  e.c6=c6;      // só sobrescreve com valor real
+  if(spo2!=null)e.spo2=spo2;
+  if(sens!=null)e.sens=sens;
+  log.sort((a,b)=>a.date<b.date?-1:1);
+  _saveValid(log);
+  renderValidacao();
+}
+function resetValidacao(){
+  if(confirm("Apagar todo o histórico de validação C6+SpO2? Não dá pra desfazer.")){
+    _saveValid([]); renderValidacao();
+  }
+}
+function _zArr(vals){
+  const m=mn(vals); const sd=Math.sqrt(vals.reduce((s,x)=>s+(x-m)**2,0)/(vals.length-1))||1;
+  return vals.map(v=>(v-m)/sd);
+}
+function renderValidacao(){
+  const log=_loadValid();
+  // noites completas (têm C6, SpO2 e sensação) — só essas entram na correlação
+  const full=log.filter(e=>e.c6!=null&&e.spo2!=null&&e.sens!=null);
+  const n=full.length;
+  // composto z(C6)+z(SpO2) e recovery via CDF
+  let recByDate={};
+  if(n>=2){
+    const zc6=_zArr(full.map(e=>e.c6));
+    const zsp=_zArr(full.map(e=>e.spo2));
+    full.forEach((e,i)=>{
+      const zcomb=(zc6[i]+zsp[i])/2;
+      recByDate[e.date]=Math.round(100*0.5*(1+_erf(zcomb/Math.SQRT2)));
+    });
+  }
+  // ρ do composto vs sensação
+  let rho=null;
+  if(n>=4){
+    const comp=full.map(e=>recByDate[e.date]);
+    const sns =full.map(e=>e.sens);
+    rho=_spearman(comp,sns);
+  }
+  // KPIs
+  const badNights=full.filter(e=>e.sens<=2).length;
+  $("kpiValid").innerHTML =
+    kpi("Noites completas", n, "") +
+    kpi("Noites ruins (≤2)", badNights, "") +
+    kpi("ρ atual", rho!=null?(rho>=0?"+":"")+rho.toFixed(2):"—", "");
+  // veredito e tag
+  let tag, cls, msg;
+  if(n<4){
+    tag="coletando"; cls="pend";
+    msg=`Faltam ${4-n} noite(s) pra começar a medir o ρ. Registre a sensação toda manhã.`;
+  } else if(badNights<3){
+    tag="sem noites ruins"; cls="warn";
+    msg=`ρ=${rho.toFixed(2)} sobre ${n} noites, mas só ${badNights} ruim(ns). A pista SÓ vale se aguentar noites ruins variadas — precisa de ≥3.`;
+  } else if(rho>=0.6 && n>=12){
+    tag="PISTA CONFIRMADA"; cls="ok";
+    msg=`✅ ρ=${rho.toFixed(2)} sobre ${n} noites (${badNights} ruins). O composto C6+SpO2 do anel prevê seu recovery. Migração defensável.`;
+  } else if(rho>=0.6){
+    tag="promissor"; cls="warn";
+    msg=`ρ=${rho.toFixed(2)} sobre ${n} noites (${badNights} ruins). Segurando bem — continue até n≥12 pra confirmar.`;
+  } else if(rho>=0.3){
+    tag="fraco"; cls="warn";
+    msg=`ρ=${rho.toFixed(2)} sobre ${n} noites. Sinal fraco. Se não subir com mais noites ruins, fique no relógio.`;
+  } else {
+    tag="PISTA MORREU"; cls="pend";
+    msg=`❌ ρ=${rho.toFixed(2)} sobre ${n} noites (${badNights} ruins). O composto não prevê recovery fora da noite Flama. Não migre — fique no relógio.`;
+  }
+  $("tagValid").textContent=tag; $("tagValid").className="tag "+cls;
+  $("validVerdict").textContent=msg;
+  // tabela
+  let h="";
+  [...log].reverse().forEach(e=>{
+    const rec=recByDate[e.date]!=null?recByDate[e.date]:"—";
+    h+=`<tr><td>${e.date.slice(5)}</td><td class="r">${e.c6??"—"}</td><td class="r">${e.spo2??"—"}</td><td class="r">${e.sens??"—"}</td><td class="r">${rec}</td></tr>`;
+  });
+  $("tblValid").innerHTML=h||"<tr><td colspan='5' class='muted'>Sem dados ainda</td></tr>";
+}
 function _fisherIC(r,n){if(n<=3||r==null)return[null,null];const z=Math.atanh(Math.max(-.999,Math.min(.999,r)));const se=1/Math.sqrt(n-3);return[+Math.tanh(z-1.96*se).toFixed(2),+Math.tanh(z+1.96*se).toFixed(2)];}
 // Confiança pelo n de noites válidas (é o ScoreConfidence: n baixo = IC largo)
 function _confianca(n){
@@ -437,6 +558,7 @@ function setSens(v){
   document.querySelectorAll(".sens-btn").forEach(b=>b.classList.remove("sel"));
   document.querySelector(`[data-v="${v}"]`).classList.add("sel");
   $("sensLabel").textContent=`${v}/5 — ${SENS_LABELS[v]}`;
+  try{ upsertValidToday(); }catch(e){}
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -732,6 +854,7 @@ function renderHRV(){
     // detalhe candidatos
     renderCandDetail(DAYS);
 
+    try{ upsertValidToday(); }catch(e){}
   }catch(e){log("renderHRV ERR: "+e.message+"\n"+e.stack);stData("Erro ao renderizar HRV: "+e.message,"err");}
 }
 
@@ -1004,6 +1127,7 @@ function renderSpo2(){
   lastSpo2={avg:avgNight, min:minPct};
   // atualiza illness detector
   updateIllnessDetector();
+  try{ upsertValidToday(); }catch(e){}
   // tabela
   const tb=$("tblSpo2");tb.innerHTML="";
   readings.forEach(r=>{
@@ -1185,6 +1309,27 @@ $("btnCopy").onclick=async()=>{
   try{await navigator.clipboard.writeText(txt);stData("Copiado ✓","ok");}
   catch{stData("Copie do log técnico.","warn");}
 };
+
+// ═══════════════════════════════════════════════════════════════════════
+// SEED — semeia as 4 noites já validadas UMA ÚNICA VEZ (01-04/07)
+// Só roda se nunca foi semeado. Se você zerar o histórico, começa limpo.
+// ═══════════════════════════════════════════════════════════════════════
+(function seedValidacaoUmaVez(){
+  try{
+    if(localStorage.getItem("reckRingValidationSeeded")==="1") { renderValidacao(); return; }
+    const jaTem=_loadValid();
+    if(jaTem.length===0){
+      _saveValid([
+        {date:"2026-07-01", c6:48, spo2:95, sens:3},
+        {date:"2026-07-02", c6:49, spo2:97, sens:4},
+        {date:"2026-07-03", c6:49, spo2:97, sens:4},
+        {date:"2026-07-04", c6:40, spo2:94, sens:2},
+      ]);
+    }
+    localStorage.setItem("reckRingValidationSeeded","1");
+    renderValidacao();
+  }catch(e){}
+})();
 </script>
 </body>
 </html>
