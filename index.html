@@ -210,13 +210,20 @@ pre{background:#090b10;border:1px solid var(--line);border-radius:8px;padding:8p
 <!-- ════════════════════════════════════════════════════════════════════ -->
 </div>
 <div class="card" id="cardValidacao">
-  <h2>🧪 Validação C6 + SpO2 <span class="tag pend" id="tagValid">coletando</span></h2>
-  <p class="hint">Teste da hipótese: o recovery do anel = nível de HRV (C6) + SpO2, sem relógio. Precisa de ≥12 noites com pelo menos 3-4 ruins para decidir a migração.</p>
+  <h2>🧪 Validação HRV anel→relógio <span class="tag pend" id="tagValid">coletando</span></h2>
+  <p class="hint">Testa se a <b>mediana do HRV do anel</b> (00-06h) reproduz o <b>HRV do relógio</b> nas noites <b>limpas</b> (sem doença). Meta p/ migrar: r ≥ 0.85. Também monitora o offset relógio−anel.</p>
+  <div style="display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap">
+    <label class="hint" style="display:flex;gap:6px;align-items:center;cursor:pointer">
+      <input type="checkbox" id="chkDoente" onchange="toggleDoente()"> 🤒 Noite de hoje foi com doença (exclui da validação)
+    </label>
+    <span class="hint" style="opacity:.7">| HRV relógio hoje:</span>
+    <input type="number" id="inpWatchHRV" placeholder="ms" style="width:64px;padding:3px 6px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--fg)" onchange="setWatchHRV()">
+  </div>
   <div class="g3" id="kpiValid"></div>
   <div id="validVerdict" class="hint" style="margin-top:8px"></div>
   <details style="margin-top:8px">
     <summary>Ver as noites registradas</summary>
-    <table><tr><th>Data</th><th class="r">C6</th><th class="r">SpO2</th><th class="r">Sens</th><th class="r">Recov</th></tr><tbody id="tblValid"></tbody></table>
+    <table><tr><th>Data</th><th class="r">med anel</th><th class="r">relógio</th><th class="r">Δ off</th><th class="r">SpO2</th><th class="r">Sens</th><th class="r">doente</th></tr><tbody id="tblValid"></tbody></table>
   </details>
   <button class="btn sec sm" style="margin-top:8px" onclick="resetValidacao()">🗑️ Zerar histórico de validação</button>
   <details style="margin-top:8px">
@@ -449,89 +456,88 @@ function _loadValid(){
 function _saveValid(log){
   try{ localStorage.setItem(VALID_KEY, JSON.stringify(log)); }catch(e){}
 }
-// registra/atualiza a noite de hoje com o que estiver disponível (c6, spo2, sens)
+// registra/atualiza a noite de hoje: mediana HRV do anel + HRV relógio + spo2 + sens + doente
+let _watchHRVToday=null, _doenteToday=false;
+function setWatchHRV(){ const v=parseFloat($("inpWatchHRV").value); _watchHRVToday=isNaN(v)?null:v; upsertValidToday(); }
+function toggleDoente(){ _doenteToday=$("chkDoente").checked; upsertValidToday(); }
 function upsertValidToday(){
   const iso = daysAgoToISO(0);
-  const c6  = (typeof ringHRV!=="undefined" && ringHRV[0]) ? C6(ringHRV[0]) : null;
+  const med = (typeof ringHRV!=="undefined" && ringHRV[0]) ? HRV_MED(ringHRV[0]) : null;
   const spo2= (lastSpo2 && lastSpo2.avg!=null) ? lastSpo2.avg : null;
   const sens= sensValue!=null ? sensValue : null;
+  // HRV do relógio: prioriza input manual; senão tenta a tabela ZEPP
+  const watch= _watchHRVToday!=null ? _watchHRVToday : (ZEPP[iso]?.hrv ?? null);
   const log = _loadValid();
   let e = log.find(x=>x.date===iso);
-  if(!e){ e={date:iso,c6:null,spo2:null,sens:null}; log.push(e); }
-  if(c6!=null)  e.c6=c6;      // só sobrescreve com valor real
-  if(spo2!=null)e.spo2=spo2;
-  if(sens!=null)e.sens=sens;
+  if(!e){ e={date:iso,med:null,watch:null,spo2:null,sens:null,sick:false}; log.push(e); }
+  if(med!=null)  e.med=med;
+  if(spo2!=null) e.spo2=spo2;
+  if(sens!=null) e.sens=sens;
+  if(watch!=null)e.watch=watch;
+  e.sick=_doenteToday;
   log.sort((a,b)=>a.date<b.date?-1:1);
   _saveValid(log);
   renderValidacao();
 }
 function resetValidacao(){
-  if(confirm("Apagar todo o histórico de validação C6+SpO2? Não dá pra desfazer.")){
-    _saveValid([]); renderValidacao();
+  if(confirm("Apagar todo o histórico de validação? Não dá pra desfazer.")){
+    _saveValid([]); localStorage.removeItem("reckRingValidationSeeded"); renderValidacao();
   }
-}
-function _zArr(vals){
-  const m=mn(vals); const sd=Math.sqrt(vals.reduce((s,x)=>s+(x-m)**2,0)/(vals.length-1))||1;
-  return vals.map(v=>(v-m)/sd);
 }
 function renderValidacao(){
   const log=_loadValid();
-  // noites completas (têm C6, SpO2 e sensação) — só essas entram na correlação
-  const full=log.filter(e=>e.c6!=null&&e.spo2!=null&&e.sens!=null);
-  const n=full.length;
-  // composto z(C6)+z(SpO2) e recovery via CDF
-  let recByDate={};
-  if(n>=2){
-    const zc6=_zArr(full.map(e=>e.c6));
-    const zsp=_zArr(full.map(e=>e.spo2));
-    full.forEach((e,i)=>{
-      const zcomb=(zc6[i]+zsp[i])/2;
-      recByDate[e.date]=Math.round(100*0.5*(1+_erf(zcomb/Math.SQRT2)));
-    });
-  }
-  // ρ do composto vs sensação
-  let rho=null;
-  if(n>=4){
-    const comp=full.map(e=>recByDate[e.date]);
-    const sns =full.map(e=>e.sens);
-    rho=_spearman(comp,sns);
+  // noites com AMBOS os HRV (anel-mediana e relógio) — base da validação
+  const pares=log.filter(e=>e.med!=null&&e.watch!=null);
+  const limpas=pares.filter(e=>!e.sick);          // só noites SEM doença
+  const nP=pares.length, nL=limpas.length;
+  // r entre mediana do anel e HRV do relógio, nas noites limpas
+  let r=null;
+  if(nL>=3){ r=_pearson(limpas.map(e=>e.med), limpas.map(e=>e.watch)); }
+  // offset médio relógio − anel (todas as noites com par)
+  let offset=null, offSd=null;
+  if(nP>=2){
+    const difs=pares.map(e=>e.watch-e.med);
+    offset=mn(difs);
+    offSd=Math.sqrt(difs.reduce((s,x)=>s+(x-offset)**2,0)/(difs.length-1||1));
   }
   // KPIs
-  const badNights=full.filter(e=>e.sens<=2).length;
   $("kpiValid").innerHTML =
-    kpi("Noites completas", n, "") +
-    kpi("Noites ruins (≤2)", badNights, "") +
-    kpi("ρ atual", rho!=null?(rho>=0?"+":"")+rho.toFixed(2):"—", "");
-  // veredito e tag
+    kpi("Noites limpas", nL, `de ${nP} com par`) +
+    kpi("r anel↔relógio", r!=null?(r>=0?"+":"")+r.toFixed(2):"—", "meta ≥0.85") +
+    kpi("Offset relógio−anel", offset!=null?(offset>=0?"+":"")+offset.toFixed(1):"—", offSd!=null?"±"+offSd.toFixed(1)+"ms":"");
+  // veredito
   let tag, cls, msg;
-  if(n<4){
+  if(nL<3){
     tag="coletando"; cls="pend";
-    msg=`Faltam ${4-n} noite(s) pra começar a medir o ρ. Registre a sensação toda manhã.`;
-  } else if(badNights<3){
-    tag="sem noites ruins"; cls="warn";
-    msg=`ρ=${rho.toFixed(2)} sobre ${n} noites, mas só ${badNights} ruim(ns). A pista SÓ vale se aguentar noites ruins variadas — precisa de ≥3.`;
-  } else if(rho>=0.6 && n>=12){
-    tag="PISTA CONFIRMADA"; cls="ok";
-    msg=`✅ ρ=${rho.toFixed(2)} sobre ${n} noites (${badNights} ruins). O composto C6+SpO2 do anel prevê seu recovery. Migração defensável.`;
-  } else if(rho>=0.6){
+    msg=`Faltam ${3-nL} noite(s) limpa(s) com HRV do relógio pra medir. Preencha o HRV do relógio e marque doença quando houver.`;
+  } else if(r>=0.85 && nL>=10){
+    tag="MIGRAÇÃO OK"; cls="ok";
+    msg=`✅ r=${r.toFixed(2)} sobre ${nL} noites limpas. A mediana do anel reproduz o relógio. Offset ${offset.toFixed(1)}±${offSd.toFixed(1)}ms ${offSd<3?"(estável)":"(instável)"}. Migração defensável.`;
+  } else if(r>=0.85){
+    tag="quase lá"; cls="ok";
+    msg=`r=${r.toFixed(2)} sobre ${nL} noites limpas — bate a meta, mas junte até ~10 noites pra confirmar. Offset ${offset.toFixed(1)}±${offSd.toFixed(1)}ms.`;
+  } else if(r>=0.7){
     tag="promissor"; cls="warn";
-    msg=`ρ=${rho.toFixed(2)} sobre ${n} noites (${badNights} ruins). Segurando bem — continue até n≥12 pra confirmar.`;
-  } else if(rho>=0.3){
+    msg=`r=${r.toFixed(2)} sobre ${nL} noites limpas. Anel segue o relógio, mas ainda abaixo de 0.85. Continue — offset ${offset.toFixed(1)}±${offSd.toFixed(1)}ms.`;
+  } else if(r>=0.4){
     tag="fraco"; cls="warn";
-    msg=`ρ=${rho.toFixed(2)} sobre ${n} noites. Sinal fraco. Se não subir com mais noites ruins, fique no relógio.`;
+    msg=`r=${r.toFixed(2)} sobre ${nL} noites limpas. Anel só borra o sinal do relógio. Se não subir, fique no relógio.`;
   } else {
-    tag="PISTA MORREU"; cls="pend";
-    msg=`❌ ρ=${rho.toFixed(2)} sobre ${n} noites (${badNights} ruins). O composto não prevê recovery fora da noite Flama. Não migre — fique no relógio.`;
+    tag="não reproduz"; cls="pend";
+    msg=`❌ r=${r.toFixed(2)} sobre ${nL} noites limpas. A mediana do anel não reproduz o relógio. Não migre.`;
   }
   $("tagValid").textContent=tag; $("tagValid").className="tag "+cls;
   $("validVerdict").textContent=msg;
+  // reflete estado dos controles de hoje
+  const isoT=daysAgoToISO(0), eT=log.find(x=>x.date===isoT);
+  if(eT){ $("chkDoente").checked=!!eT.sick; if(eT.watch!=null&&!$("inpWatchHRV").value)$("inpWatchHRV").value=eT.watch; }
   // tabela
   let h="";
   [...log].reverse().forEach(e=>{
-    const rec=recByDate[e.date]!=null?recByDate[e.date]:"—";
-    h+=`<tr><td>${e.date.slice(5)}</td><td class="r">${e.c6??"—"}</td><td class="r">${e.spo2??"—"}</td><td class="r">${e.sens??"—"}</td><td class="r">${rec}</td></tr>`;
+    const off=(e.med!=null&&e.watch!=null)?(e.watch-e.med>=0?"+":"")+(e.watch-e.med):"—";
+    h+=`<tr${e.sick?' style="opacity:.5"':''}><td>${e.date.slice(5)}</td><td class="r">${e.med??"—"}</td><td class="r">${e.watch??"—"}</td><td class="r">${off}</td><td class="r">${e.spo2??"—"}</td><td class="r">${e.sens??"—"}</td><td class="r">${e.sick?"🤒":""}</td></tr>`;
   });
-  $("tblValid").innerHTML=h||"<tr><td colspan='5' class='muted'>Sem dados ainda</td></tr>";
+  $("tblValid").innerHTML=h||"<tr><td colspan='7' class='muted'>Sem dados ainda</td></tr>";
 }
 function _fisherIC(r,n){if(n<=3||r==null)return[null,null];const z=Math.atanh(Math.max(-.999,Math.min(.999,r)));const se=1/Math.sqrt(n-3);return[+Math.tanh(z-1.96*se).toFixed(2),+Math.tanh(z+1.96*se).toFixed(2)];}
 // Confiança pelo n de noites válidas (é o ScoreConfidence: n baixo = IC largo)
@@ -551,6 +557,8 @@ const CANDS=[
   {id:"C6",name:"🏆 Máx profundo",sub:"01h–06h"},
 ];
 const CAND_FNS={C1,C2,C3,C4,C5,C6};
+// MEDIANA do sono 00-06h — modelo de HRV validado (melhor que C6/máx contra o relógio)
+function HRV_MED(d){const v=[...vw(d,0,360)].sort((a,b)=>a-b);if(!v.length)return null;const m=Math.floor(v.length/2);return v.length%2?v[m]:Math.round((v[m-1]+v[m])/2);}
 
 // ═══════════════════════════════════════════════════════════════════════
 // SENSAÇÃO
@@ -1367,9 +1375,12 @@ $("btnCopy").onclick=async()=>{
   // ── 8. ESTADO DA VALIDAÇÃO C6+SpO2 (log acumulado) ──
   const vlog=(typeof _loadValid==="function")?_loadValid():[];
   if(vlog.length){
-    txt+="\n=== VALIDAÇÃO C6+SpO2 (log acumulado) ===\n";
-    txt+="Data | C6 | SpO2 | Sensação\n";
-    vlog.forEach(e=>{txt+=`${e.date} | ${e.c6??"—"} | ${e.spo2??"—"} | ${e.sens??"—"}\n`;});
+    txt+="\n=== VALIDAÇÃO HRV anel→relógio (log acumulado) ===\n";
+    txt+="Data | med anel | HRV relógio | offset | SpO2 | Sens | doente\n";
+    vlog.forEach(e=>{
+      const off=(e.med!=null&&e.watch!=null)?(e.watch-e.med):"—";
+      txt+=`${e.date} | ${e.med??"—"} | ${e.watch??"—"} | ${off} | ${e.spo2??"—"} | ${e.sens??"—"} | ${e.sick?"sim":"não"}\n`;
+    });
   }
 
   try{await navigator.clipboard.writeText(txt);stData("Copiado ✓ ("+txt.length+" chars)","ok");}
@@ -1385,11 +1396,15 @@ $("btnCopy").onclick=async()=>{
     if(localStorage.getItem("reckRingValidationSeeded")==="1") { renderValidacao(); return; }
     const jaTem=_loadValid();
     if(jaTem.length===0){
+      // med=mediana HRV anel 00-06h · watch=HRV relógio(Zepp) · sick=doença(observações Reck)
       _saveValid([
-        {date:"2026-07-01", c6:48, spo2:95, sens:3},
-        {date:"2026-07-02", c6:49, spo2:97, sens:4},
-        {date:"2026-07-03", c6:49, spo2:97, sens:4},
-        {date:"2026-07-04", c6:40, spo2:94, sens:2},
+        {date:"2026-06-28", med:45, watch:54, spo2:null, sens:null, sick:true},   // gripe
+        {date:"2026-06-29", med:45, watch:47, spo2:null, sens:null, sick:true},   // gripe
+        {date:"2026-06-30", med:41, watch:49, spo2:null, sens:null, sick:false},  // pizza
+        {date:"2026-07-01", med:45, watch:48, spo2:95,  sens:3,   sick:true},   // recup gripe
+        {date:"2026-07-02", med:41, watch:50, spo2:97,  sens:4,   sick:false},  // banh madrug
+        {date:"2026-07-03", med:45, watch:50, spo2:97,  sens:4,   sick:false},  // dormiu tarde
+        {date:"2026-07-04", med:36, watch:41, spo2:94,  sens:2,   sick:false},  // FLAMA
       ]);
     }
     localStorage.setItem("reckRingValidationSeeded","1");
