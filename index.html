@@ -113,6 +113,25 @@ pre{background:#090b10;border:1px solid var(--line);border-radius:8px;padding:8p
   <div id="sensLabel" class="hint" style="text-align:center;margin-top:6px">Nenhuma escolhida</div>
 </div>
 
+<!-- ESTADO DO DIA — dois eixos: recovery (mediana HRV) + gate de doença -->
+<div class="card" id="cardEstadoDia">
+  <h2>🧭 Estado do dia</h2>
+  <p class="hint">Dois eixos independentes: recuperação autonômica (HRV) e sinal de doença (SpO2+temp). Um dia ruim pode cair em qualquer um — ou nos dois.</p>
+  <div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap">
+    <div style="flex:1;min-width:140px;padding:12px;border-radius:12px;border:1px solid var(--line)" id="eixoRecov">
+      <div class="kpi-l">🔋 Recuperação (HRV)</div>
+      <div style="font-size:28px;font-weight:700;margin:4px 0" id="recovVal">—</div>
+      <div class="hint" id="recovMsg">aguardando sync</div>
+    </div>
+    <div style="flex:1;min-width:140px;padding:12px;border-radius:12px;border:1px solid var(--line)" id="eixoDoenca">
+      <div class="kpi-l">🌡️ Sinal de doença</div>
+      <div style="font-size:28px;font-weight:700;margin:4px 0" id="doencaVal">—</div>
+      <div class="hint" id="doencaMsg">aguardando sync</div>
+    </div>
+  </div>
+  <div id="estadoVerdict" style="margin-top:10px;padding:10px 12px;border-radius:10px;font-size:13px;display:none"></div>
+</div>
+
 <!-- AÇÕES -->
 <div class="card">
   <h2>Sincronizar</h2>
@@ -560,6 +579,104 @@ const CAND_FNS={C1,C2,C3,C4,C5,C6};
 // MEDIANA do sono 00-06h — modelo de HRV validado (melhor que C6/máx contra o relógio)
 function HRV_MED(d){const v=[...vw(d,0,360)].sort((a,b)=>a-b);if(!v.length)return null;const m=Math.floor(v.length/2);return v.length%2?v[m]:Math.round((v[m-1]+v[m])/2);}
 
+// ═══ NOSSO SCORE DE SONO (0-100) — dos dados brutos do anel, baseline pessoal ═══
+// Componentes: duração, HORÁRIO (circadiano), profundo, REM, fragmentação
+// Pesos por confiabilidade do anel: duração+horário confiáveis; fases+despertares ruidosos
+const SLEEP_W={dur:0.35, timing:0.25, deep:0.20, rem:0.10, frag:0.10};
+const SLEEP_BASE={ bedMin:22*60+22, durTarget:7.25, ceil:7.7, deepTarget:105, remTarget:95 };
+// devolve {score, comp:{...}} ou null. s = sessão de sono do anel (ss,se,deep,rem,light,awake,ap)
+function sleepScore(s){
+  if(!s) return null;
+  const start = s.ss>s.se ? s.ss-1440 : s.ss;      // deitar (min), corrige virada de dia
+  const durH = (s.se-start)/60;
+  const B=SLEEP_BASE;
+  // duração: sufuciência não-linear vs alvo pessoal
+  const durSc = durH>=B.durTarget ? (durH>B.ceil ? Math.max(0,1-(durH-B.ceil)*0.1) : 1)
+                                   : Math.max(0, 1-(B.durTarget-durH)/2.5);
+  // horário: penaliza deitar tarde vs baseline pessoal (cada 2h tarde -> zera)
+  let bed = s.ss; if(bed<12*60) bed+=24*60;         // 00:13 -> 24:13
+  const timingSc = Math.max(0, 1 - Math.max(0, bed-B.bedMin)/120);
+  // fases (literatura): profundo restaura corpo, REM restaura mente
+  const deepSc = Math.min(1, s.deep/B.deepTarget);
+  const remSc  = Math.min(1, s.rem/B.remTarget);
+  // fragmentação: menos despertares/tempo acordado = melhor (peso baixo: anel subdetecta)
+  const fragSc = Math.max(0, 1 - s.ap*0.15 - s.awake/60*0.2);
+  const comp={dur:durSc,timing:timingSc,deep:deepSc,rem:remSc,frag:fragSc};
+  const score = Math.round(100*(SLEEP_W.dur*durSc+SLEEP_W.timing*timingSc+SLEEP_W.deep*deepSc+SLEEP_W.rem*remSc+SLEEP_W.frag*fragSc));
+  return {score, comp, durH:+durH.toFixed(1), bedMin:s.ss};
+}
+function _sleepTodaySession(){
+  if(typeof lastSleepSessions==="undefined"||!lastSleepSessions.length) return null;
+  return lastSleepSessions.find(x=>x.dAgo===0) || lastSleepSessions[0];
+}
+
+// ═══ ESTADO DO DIA — 2 eixos: recuperação (mediana HRV) + gate de doença ═══
+function updateEstadoDia(){
+ try{
+  // ── EIXO 1: RECUPERAÇÃO (mediana HRV 70% + score de sono 30%) ──
+  const medHoje = (typeof ringHRV!=="undefined"&&ringHRV[0]) ? HRV_MED(ringHRV[0]) : null;
+  const sono = _sleepTodaySession();
+  const sSc = sono ? sleepScore(sono) : null;
+  const rv=$("recovVal"), rm=$("recovMsg"), er=$("eixoRecov");
+  let recov=null, recovHRV=null;
+  if(medHoje!=null){
+    const log=(typeof _loadValid==="function")?_loadValid():[];
+    const base=log.filter(e=>e.med!=null&&!e.sick).map(e=>e.med).slice(-30);
+    if(base.length>=3){
+      const m=mn(base), sd=Math.sqrt(base.reduce((s,x)=>s+(x-m)**2,0)/(base.length-1))||1;
+      const zc=(medHoje-m)/sd;
+      recovHRV=Math.round(100*0.5*(1+_erf(Math.max(-3,Math.min(3,zc))/Math.SQRT2)));
+      // blend: 70% HRV + 30% sono (se houver sono); senão 100% HRV
+      if(sSc){ recov=Math.round(0.7*recovHRV+0.3*sSc.score); }
+      else   { recov=recovHRV; }
+      rv.textContent=recov;
+      const sonoTxt = sSc ? ` · sono ${sSc.score}${sSc.comp.timing<0.5?" (deitou tarde!)":""}` : " · sem sono";
+      rm.textContent=`HRV ${recovHRV} (med ${medHoje}ms)${sonoTxt}`;
+      er.style.borderColor = recov>=67?"var(--ok)":recov>=34?"var(--warn)":"var(--bad)";
+    } else {
+      rv.textContent=medHoje+"ms";
+      rm.textContent=`baseline insuficiente (${base.length} noites limpas, precisa 3+)`+(sSc?` · sono ${sSc.score}`:"");
+    }
+  } else if(sSc){
+    rv.textContent="sono "+sSc.score; rm.textContent="sem HRV do anel — só score de sono";
+  } else { rv.textContent="—"; rm.textContent="sem HRV do anel hoje"; }
+
+  // ── EIXO 2: DOENÇA (mesmo gate triplo do detector, mas exposto como eixo) ──
+  const dv=$("doencaVal"), dm=$("doencaMsg"), ed=$("eixoDoenca");
+  const spo2Avg=lastSpo2?.avg, spo2Min=lastSpo2?.min;
+  const c6=(typeof ringHRV!=="undefined"&&ringHRV[0])?C6(ringHRV[0]):null;
+  const tempDev=tempHistory.length?tempHistory[tempHistory.length-1]?.nightAvg:null;
+  const flags=[];
+  if(c6!=null&&c6<42)flags.push("HRV↓");
+  if(spo2Avg!=null&&spo2Avg<95)flags.push("SpO2↓");
+  if(spo2Min!=null&&spo2Min<93)flags.push("SpO2mín↓");
+  if(tempDev!=null&&tempDev>36.2)flags.push("temp↑");
+  const temDados = spo2Avg!=null||tempDev!=null||c6!=null;
+  const dispara = flags.length>=2;
+  if(!temDados){ dv.textContent="—"; dm.textContent="sincronize painel completo (SpO2+temp)"; }
+  else if(dispara){ dv.textContent="⚠️ ativo"; dm.textContent=flags.join(" · ")+` (${flags.length} sinais)`; ed.style.borderColor="var(--bad)"; }
+  else{ dv.textContent="ok"; dm.textContent=flags.length?flags.join(" · ")+" (1 sinal, precisa 2+)":"nenhum sinal"; ed.style.borderColor="var(--line)"; }
+
+  // ── VERDITO COMBINADO ──
+  const box=$("estadoVerdict");
+  if(recov==null&&!temDados){ box.style.display="none"; return; }
+  box.style.display="block";
+  let m2,bg;
+  if(dispara && recov!=null && recov<40){
+    m2="🔴 Dia ruim nos DOIS eixos: pouca recuperação E sinal de doença. Descanse."; bg="rgba(255,107,107,.12)";
+  } else if(dispara){
+    m2="🟡 Recuperação ok, MAS sinal de doença ativo. Corpo descansado, mas pode estar ficando doente — pegue leve."; bg="rgba(255,193,77,.12)";
+  } else if(recov!=null && recov<40){
+    m2="🟠 Sem doença, mas recuperação baixa (estresse/sono/treino). Dia de recuperar, não de forçar."; bg="rgba(255,150,80,.12)";
+  } else if(recov!=null && recov>=67){
+    m2="🟢 Recuperado e sem sinal de doença. Dia bom, pode treinar."; bg="rgba(80,200,120,.12)";
+  } else {
+    m2="🔵 Estado intermediário. Nada gritante nos dois eixos."; bg="rgba(100,150,255,.10)";
+  }
+  box.style.background=bg; box.textContent=m2;
+ }catch(e){}
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // SENSAÇÃO
 // ═══════════════════════════════════════════════════════════════════════
@@ -570,6 +687,7 @@ function setSens(v){
   document.querySelector(`[data-v="${v}"]`).classList.add("sel");
   $("sensLabel").textContent=`${v}/5 — ${SENS_LABELS[v]}`;
   try{ upsertValidToday(); }catch(e){}
+  try{ updateEstadoDia(); }catch(e){}
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -734,6 +852,7 @@ function decodeSleep(buf,forDiag){
   if(!sessions.length){showSleepEmpty("nenhuma sessão");return null;}
   sessions.sort((a,b)=>a.dAgo-b.dAgo);
   lastSleepSessions=sessions.slice(); // guarda para o copiar
+  try{ updateEstadoDia(); }catch(e){}
   const hoje=sessions.find(s=>s.dAgo===0)||sessions[0];
   if(!forDiag)renderSleep(hoje,sessions);
   return{hoje,sessions};
@@ -867,6 +986,7 @@ function renderHRV(){
     renderCandDetail(DAYS);
 
     try{ upsertValidToday(); }catch(e){}
+  try{ updateEstadoDia(); }catch(e){}
   }catch(e){log("renderHRV ERR: "+e.message+"\n"+e.stack);stData("Erro ao renderizar HRV: "+e.message,"err");}
 }
 
@@ -1142,6 +1262,7 @@ function renderSpo2(){
   // atualiza illness detector
   updateIllnessDetector();
   try{ upsertValidToday(); }catch(e){}
+  try{ updateEstadoDia(); }catch(e){}
   // tabela
   const tb=$("tblSpo2");tb.innerHTML="";
   readings.forEach(r=>{
