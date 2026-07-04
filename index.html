@@ -303,6 +303,9 @@ let tempMode=false, tempBuf=[], tempExpected=0;
 let spo2Mode=false, spo2Buf=[], spo2Expected=0;
 let batteryPct=null;
 let lastSpo2={avg:null,min:null}; // persiste entre renders para o illness detector
+let lastSpo2Readings=[];  // leituras brutas de SpO2 (hora a hora) da última sync
+let lastSleepSessions=[]; // sessões de sono decodificadas (deep/rem/light/awake em min)
+let lastTempReadings=[];  // leituras brutas de temperatura da última sync
 let sensValue=null;
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -722,6 +725,7 @@ function decodeSleep(buf,forDiag){
   const sessions=parseSleepBuf(buf);
   if(!sessions.length){showSleepEmpty("nenhuma sessão");return null;}
   sessions.sort((a,b)=>a.dAgo-b.dAgo);
+  lastSleepSessions=sessions.slice(); // guarda para o copiar
   const hoje=sessions.find(s=>s.dAgo===0)||sessions[0];
   if(!forDiag)renderSleep(hoje,sessions);
   return{hoje,sessions};
@@ -984,6 +988,7 @@ function renderTempEmpty(why){
 
 function renderTemp(readings){
   $("cardTemp").style.display="block";
+  lastTempReadings=readings.slice(); // guarda bruto para o copiar
   // noturna: 00h-06h (0-360 min)
   const night=readings.filter(r=>r.min<=360);
   const day=readings;
@@ -1125,6 +1130,7 @@ function renderSpo2(){
   }
   // persiste valores para o illness detector
   lastSpo2={avg:avgNight, min:minPct};
+  lastSpo2Readings=readings.slice(); // guarda bruto para o copiar
   // atualiza illness detector
   updateIllnessDetector();
   try{ upsertValidToday(); }catch(e){}
@@ -1276,37 +1282,97 @@ $("btnDiag").onclick=async()=>{try{await runDiag();}catch(e){stData("Erro diag: 
 // ═══════════════════════════════════════════════════════════════════════
 $("btnCopy").onclick=async()=>{
   const DAYS=[0,1,2,3,4,5,6];
+  const pad2=n=>String(n).padStart(2,"0");
+  const hhmm=m=>`${pad2(Math.floor(m/60))}:${pad2(m%60)}`;
   let txt="PAINEL ANEL R10 — "+(device?.name||"R10")+"\n";
   txt+=new Date().toLocaleString("pt-BR")+"\n";
+  if(batteryPct!=null)txt+="Bateria: "+batteryPct+"%\n";
   if(sensValue)txt+="Sensação: "+sensValue+"/5 ("+SENS_LABELS[sensValue]+")\n";
+
+  // ── 1. TABELA HRV 7 DIAS (Índice + todos os componentes) ──
   txt+="\n=== HRV 7 DIAS (Índice + variabilidade) ===\n";
   const _allDays={};for(const dd of DAYS)if(ringHRV[dd]&&Object.keys(ringHRV[dd]).length)_allDays[dd]=ringHRV[dd];
   const _idx=calcIndiceVar(_allDays);
-  txt+="Data       | Zepp | Índice | C6 | Range | maxQueda | CV% | STD | range1-4\n";
+  txt+="Data       | Zepp | Índice | C6 | Range | maxQueda | CV% | STD | range1-4 | slots | qual\n";
   for(const d of DAYS){
     const iso=daysAgoToISO(d),z=ZEPP[iso]?.hrv??"—",day=ringHRV[d]??{};
     const idx=_idx[d]!=null?(_idx[d]>=0?"+":"")+_idx[d]:"—";
-    txt+=`${iso} | ${z}ms | ${idx} | ${C6(day)??"—"} | ${RANGE(day)??"—"}ms | ${MAXQUEDA(day)??"—"} | ${CV(day)??"—"} | ${STD(day)??"—"} | ${RANGE14(day)??"—"}\n`;
+    const nslots=Object.keys(day).filter(m=>+m>=60&&+m<=360).length;
+    const q=(typeof nightQuality==="function")?nightQuality(day):"";
+    txt+=`${iso} | ${z}ms | ${idx} | ${C6(day)??"—"} | ${RANGE(day)??"—"}ms | ${MAXQUEDA(day)??"—"} | ${CV(day)??"—"} | ${STD(day)??"—"} | ${RANGE14(day)??"—"} | ${nslots} | ${q}\n`;
   }
+
+  // ── 2. TODOS OS CANDIDATOS C1–C6 (não só o C6) ──
+  txt+="\n=== CANDIDATOS HRV C1–C6 (7 dias) ===\n";
+  txt+="Legenda: C1=média0-8h C2=média1-7h C3=média1-4h C4=média5-7h C5=mediana0-8h C6=máx1-6h\n";
+  txt+="Data       | C1 | C2 | C3 | C4 | C5 | C6\n";
+  for(const d of DAYS){
+    const day=ringHRV[d]??{};
+    if(!Object.keys(day).length)continue;
+    txt+=daysAgoToISO(d)+" | "+["C1","C2","C3","C4","C5","C6"].map(c=>CAND_FNS[c](day)??"—").join(" | ")+"\n";
+  }
+
+  // ── 3. HRV BRUTO POR HORA (todos os 7 dias) ──
   txt+="\n=== HRV BRUTO POR HORA ===\n";
   for(const d of DAYS){
     const day=ringHRV[d]??{};const mins=Object.keys(day).map(Number).sort((a,b)=>a-b);
     if(!mins.length)continue;
-    txt+=daysAgoToISO(d)+": "+mins.map(m=>`${String(Math.floor(m/60)).padStart(2,"0")}:${String(m%60).padStart(2,"0")}=${day[m]}`).join(" ")+"\n";
+    txt+=daysAgoToISO(d)+": "+mins.map(m=>`${hhmm(m)}=${day[m]}`).join(" ")+"\n";
   }
+
+  // ── 4. FC HISTÓRICA BRUTA + derivados (RHR, FC sono) ──
   txt+="\n=== FC HISTÓRICA ===\n";
-  hrSamples.forEach(s=>{const hh=String(Math.floor(s.minute/60)).padStart(2,"0"),mm=String(s.minute%60).padStart(2,"0");txt+=`${hh}:${mm}=${s.bpm} `;});
-  txt+="\n\n=== SPO2 ===\n";
+  if(hrSamples.length){
+    const sono=hrSamples.filter(s=>s.minute>=21*60||s.minute<=9*60);
+    const noturno=hrSamples.filter(s=>s.minute<=360); // 00-06h
+    const rhrMin=sono.length?Math.min(...sono.map(s=>s.bpm)):null;
+    const fcSonoMed=noturno.length?Math.round(noturno.reduce((a,s)=>a+s.bpm,0)/noturno.length):null;
+    txt+=`Derivados: RHR(mín sono)=${rhrMin??"—"}bpm · FC média noturna(00-06h)=${fcSonoMed??"—"}bpm · leituras=${hrSamples.length}\n`;
+    txt+="Série (5 em 5 min):\n";
+    hrSamples.forEach(s=>{txt+=`${hhmm(s.minute)}=${s.bpm} `;});
+    txt+="\n";
+  } else txt+="(sem dados de FC)\n";
+
+  // ── 5. SpO2: KPI + série bruta hora a hora ──
+  txt+="\n=== SPO2 ===\n";
   txt+=$("kpiSpo2").innerText.replace(/\n+/g," | ")+"\n";
-  txt+="\n\n=== SONO ===\n";
+  if(lastSpo2Readings.length){
+    txt+="Série bruta: "+lastSpo2Readings.map(r=>`${pad2(r.hour)}h=${r.pct}%`).join(" ")+"\n";
+  }
+
+  // ── 6. SONO: KPIs + detalhamento por dia (deep/rem/light/awake em min) ──
+  txt+="\n=== SONO ===\n";
   txt+=$("kpiSleep1").innerText.replace(/\n+/g," | ")+"\n";
   txt+=$("kpiSleep2").innerText.replace(/\n+/g," | ")+"\n";
+  if(lastSleepSessions.length){
+    txt+="Detalhe por dia (minutos):\n";
+    lastSleepSessions.forEach(s=>{
+      const tot=(s.deep+s.rem+s.light+s.awake)||1;
+      const iso=daysAgoToISO(s.dAgo);
+      txt+=`${iso}: deep=${s.deep} rem=${s.rem} light=${s.light} awake=${s.awake} despertares=${s.ap} `+
+           `| deep%=${Math.round(s.deep/tot*100)} rem%=${Math.round(s.rem/tot*100)} dur=${(tot/60).toFixed(1)}h\n`;
+    });
+  }
+
+  // ── 7. TEMPERATURA: KPI + série bruta + histórico ──
   txt+="\n=== TEMPERATURA ===\n";
   txt+=$("kpiTemp").innerText.replace(/\n+/g," | ")+"\n";
+  if(lastTempReadings.length){
+    txt+="Série bruta: "+lastTempReadings.map(r=>`${hhmm(r.min)}=${r.c.toFixed(1)}`).join(" ")+"\n";
+  }
   if(tempHistory.length){
     txt+="Histórico temp noturna: "+tempHistory.map(t=>t.date+"="+t.nightAvg+"°C").join(" · ")+"\n";
   }
-  try{await navigator.clipboard.writeText(txt);stData("Copiado ✓","ok");}
+
+  // ── 8. ESTADO DA VALIDAÇÃO C6+SpO2 (log acumulado) ──
+  const vlog=(typeof _loadValid==="function")?_loadValid():[];
+  if(vlog.length){
+    txt+="\n=== VALIDAÇÃO C6+SpO2 (log acumulado) ===\n";
+    txt+="Data | C6 | SpO2 | Sensação\n";
+    vlog.forEach(e=>{txt+=`${e.date} | ${e.c6??"—"} | ${e.spo2??"—"} | ${e.sens??"—"}\n`;});
+  }
+
+  try{await navigator.clipboard.writeText(txt);stData("Copiado ✓ ("+txt.length+" chars)","ok");}
   catch{stData("Copie do log técnico.","warn");}
 };
 
