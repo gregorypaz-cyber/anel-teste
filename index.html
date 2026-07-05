@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Reck · AnelR10</title>
+<title>Reck · Anel R10</title>
 <style>
 :root{
   --bg:#0f1115;--card:#181b22;--line:#2a2f3a;--txt:#e7eaf0;--muted:#9aa3b2;
@@ -1514,21 +1514,19 @@ $("btnCopy").onclick=async()=>{
 // ═══════════════════════════════════════════════════════════════════════
 (function seedValidacaoUmaVez(){
   try{
-    if(localStorage.getItem("reckRingValidationSeeded")==="1") { renderValidacao(); return; }
-    const jaTem=_loadValid();
-    if(jaTem.length===0){
-      // med=mediana HRV anel 00-06h · watch=HRV relógio(Zepp) · sick=doença(observações Reck)
-      _saveValid([
-        {date:"2026-06-28", med:45, watch:54, spo2:null, sens:null, sick:true},   // gripe
-        {date:"2026-06-29", med:45, watch:47, spo2:null, sens:null, sick:true},   // gripe
-        {date:"2026-06-30", med:41, watch:49, spo2:null, sens:null, sick:false},  // pizza
-        {date:"2026-07-01", med:45, watch:48, spo2:95,  sens:3,   sick:true},   // recup gripe
-        {date:"2026-07-02", med:41, watch:50, spo2:97,  sens:4,   sick:false},  // banh madrug
-        {date:"2026-07-03", med:45, watch:50, spo2:97,  sens:4,   sick:false},  // dormiu tarde
-        {date:"2026-07-04", med:36, watch:41, spo2:94,  sens:2,   sick:false},  // FLAMA
-      ]);
-    }
-    localStorage.setItem("reckRingValidationSeeded","1");
+    if(localStorage.getItem("reckRingValidationSeeded")==="v2") { renderValidacao(); return; }
+    // v2: re-semeia com 5 noites limpas + gripe marcada. med=mediana HRV anel 00-06h
+    _saveValid([
+      {date:"2026-06-28", med:45, watch:54, spo2:null, sens:null, sick:true},   // gripe
+      {date:"2026-06-29", med:45, watch:47, spo2:null, sens:null, sick:true},   // gripe
+      {date:"2026-06-30", med:41, watch:49, spo2:null, sens:4,   sick:false},  // pizza
+      {date:"2026-07-01", med:45, watch:48, spo2:95,  sens:3,   sick:true},   // recup gripe
+      {date:"2026-07-02", med:41, watch:50, spo2:97,  sens:4,   sick:false},  // banh madrug
+      {date:"2026-07-03", med:45, watch:50, spo2:97,  sens:4,   sick:false},  // dormiu tarde
+      {date:"2026-07-04", med:36, watch:41, spo2:94,  sens:2,   sick:false},  // FLAMA
+      {date:"2026-07-05", med:42, watch:54, spo2:97,  sens:4,   sick:false},  // reunião família (bom)
+    ]);
+    localStorage.setItem("reckRingValidationSeeded","v2");
     renderValidacao();
   }catch(e){}
 })();
