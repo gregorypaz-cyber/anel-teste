@@ -145,6 +145,7 @@ pre{background:#090b10;border:1px solid var(--line);border-radius:8px;padding:8p
   <button class="btn sec sm" id="btnSpo2"  disabled>🫁 SpO2 noturna</button>
   <button class="btn sec sm" id="btnTemp"  disabled>🌡️ Temperatura noturna</button>
   <button class="btn sec sm" id="btnDiag"  disabled>🔬 Diagnóstico sono (3 ranges)</button>
+  <button class="btn sec sm" id="btnAutoHRVDiag" disabled>🧪 Testar AutoHRV</button>
 </div>
 
 <!-- HERO: C6 + RANGE (resultado principal) -->
@@ -372,8 +373,14 @@ function C2(d){const v=vw(d,60,420);return v.length?Math.round(mn(v)):null;}
 function C3(d){const v=vw(d,60,240);return v.length?Math.round(mn(v)):null;}
 // C4: pré-acordar 5-7h
 function C4(d){const v=vw(d,300,420);return v.length?Math.round(mn(v)):null;}
-// C5: mediana 0-8h
-function C5(d){const v=[...vw(d,0,480)].sort((a,b)=>a-b);if(!v.length)return null;const m=Math.floor(v.length/2);return v.length%2?v[m]:Math.round((v[m-1]+v[m])/2);}
+// C5: mediana de sono 00-06h
+function C5(d){
+  const v=[...vw(d,0,360)].sort((a,b)=>a-b);
+  if(!v.length)return null;
+  const m=Math.floor(v.length/2);
+  return v.length%2?vMath.round((v[m-1]+v[m])/2);
+}
+
 // C6: máximo sono profundo 01h-06h (candidato principal — exclui 00h pré-sono e 07h artefato)
 // Hipótese: noite recuperada tem PICOS altos; noite estressada fica achatada
 function C6(d){const v=vw(d,60,360);return v.length?Math.max(...v):null;}
@@ -762,7 +769,7 @@ $("btnConnect").onclick=async()=>{
   }catch(e){stConn("Falha: "+e.message,"err");}
 };
 function enableBtns(on){
-  ["btnAll","btnHRV7","btnHR","btnSleep","btnSpo2","btnTemp","btnDiag"].forEach(id=>$(id).disabled=!on);
+  ["btnAll","btnHRV7","btnHR","btnSleep","btnSpo2","btnTemp","btnDiag","btnAutoHRVDiag"].forEach(id=>$(id).disabled=!on);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -790,10 +797,25 @@ function updateBattery(){
   el.textContent=icon+" "+batteryPct+"%";el.style.color=col;
 }
 function decodeHRVPkt(v){
-  const nr=v[1];if(nr===0xff||nr===0)return;
-  if(!ringHRV[curDay])ringHRV[curDay]={};
-  const start=nr===1?3:2,base=nr===1?0:(12*30+(nr-2)*13*30);
-  for(let i=start;i<15;i++){const h=v[i];if(!h || h < HRV_SLOT_MIN || h > HRV_SLOT_MAX)continue;ringHRV[curDay][base+(i-start)*30]=h;}
+  const nr=v[1];
+  if(nr===0xff||nr===0)return;
+
+  if(!ringHRV[curDay]) ringHRV[curDay]={};
+
+  const start = nr===1 ? 3 : 2;
+  const base  = nr===1 ? 0 : (12*30+(nr-2)*13*30);
+
+  for(let i=start;i<15;i++){
+    const h = v[i];
+    const min = base+(i-start)*30;
+
+    // diagnóstico: mostra inclusive slots vazios/descartados
+    log(`  HRV raw day=${curDay} pkt=${nr} slot=${hhmm(min)} valor=${h}`);
+
+    if(!h || h < HRV_SLOT_MIN || h > HRV_SLOT_MAX) continue;
+
+    ringHRV[curDay][min]=h;
+  }
 }
 function decodeHRPkt(v){
   const nr=v[1];if(nr===0xff||nr===0)return;
@@ -1049,7 +1071,7 @@ async function pullHRV7(){
     stData(`HRV: dia ${d+1}/7 (daysAgo=${d})…`);
     const ok=await send([CMD.syncHRV,d&0xff,(d>>8)&0xff,(d>>16)&0xff,(d>>24)&0xff]);
     if(!ok){log(`Dia ${d+1} — send falhou, pulando`);collectHRV=false;continue;}
-    await wait(3000);  // aguarda pacotes chegarem
+    await wait(6000);  // diagnóstico: dá mais tempo para todos os pacotes HRV chegarem
     collectHRV=false;
     const c6v=C6(ringHRV[d]),rng=RANGE(ringHRV[d]);
     const leituras=Object.keys(ringHRV[d]).length;
@@ -1057,6 +1079,25 @@ async function pullHRV7(){
   }
   renderHRV();
   stData("HRV concluído ✅","ok");
+}
+
+async function testAutoHRVCommands(){
+  stData("Testando comandos AutoHRV…","warn");
+
+  const tests = [
+    {nome:"AutoHR ON 5min", bytes:[0x16,0x02,0x01,0x05]},
+    {nome:"AutoHRV ON padrão", bytes:[0x38,0x02,0x01]},
+    {nome:"AutoHRV ON tentativa com intervalo 5", bytes:[0x38,0x03,0x01,0x05]},
+    {nome:"AutoHRV ON tentativa com intervalo 30", bytes:[0x38,0x03,0x01,0x1e]},
+  ];
+
+  for(const t of tests){
+    log("🧪 "+t.nome);
+    await send(t.bytes);
+    await wait(800);
+  }
+
+  stData("Teste AutoHRV enviado. Efeito só aparece em dados futuros.","ok");
 }
 
 async function pullHR(){
@@ -1386,6 +1427,15 @@ async function runDiag(){
 // ═══════════════════════════════════════════════════════════════════════
 // BOTÕES
 // ═══════════════════════════════════════════════════════════════════════
+
+$("btnAutoHRVDiag").onclick=async()=>{
+  try{
+    await testAutoHRVCommands();
+  }catch(e){
+    stData("Erro AutoHRV diag: "+e.message,"err");
+  }
+};
+
 $("btnAll").onclick=async()=>{
   $("btnAll").disabled=true;
   try{
@@ -1437,7 +1487,7 @@ $("btnCopy").onclick=async()=>{
 
   // ── 2. TODOS OS CANDIDATOS C1–C6 (não só o C6) ──
   txt+="\n=== CANDIDATOS HRV C1–C6 (7 dias) ===\n";
-  txt+="Legenda: C1=média0-8h C2=média1-7h C3=média1-4h C4=média5-7h C5=mediana0-8h C6=máx1-6h\n";
+  txt+="Legenda: C1=média0-8h C2=média1-7h C3=média1-4h C4=média5-7h C5=mediana0-6h C6=máx1-6h\n";
   txt+="Data       | C1 | C2 | C3 | C4 | C5 | C6\n";
   for(const d of DAYS){
     const day=ringHRV[d]??{};
