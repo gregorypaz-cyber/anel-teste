@@ -1182,7 +1182,7 @@ function renderTemp(readings){
   const tempNow=readings[readings.length-1]?.c;
 
   // guarda no histórico
-  const isoToday=new Date().toISOString().slice(0,10);
+  const isoToday=daysAgoToISO(0);
   const existing=tempHistory.findIndex(t=>t.date===isoToday);
   const entry={date:isoToday,nightAvg:avgNight,min:minTemp,max:maxTemp,leituras:readings.length};
   if(existing>=0)tempHistory[existing]=entry;else tempHistory.push(entry);
@@ -1535,7 +1535,7 @@ if(hrvRawSlots.length){
     txt+=`${iso}: recebidos=${total} válidos=${validos} slots30_recebidos=${meiaHoraRecebidos} slots30_validos=${meiaHoraValidos}\n`;
     txt+=rows.map(x=>`${hhmm(x.min)}=${x.value}${x.valid?"":"*"}`).join(" ")+"\n";
   }
-  txt+="L*genda: * = descartado por vazio/fo*a do range válido\n";
+  txt+="Legenda: * = descartado por vazio/fora do range válido\n";
 }
 
   // ── 3. HRV BRUTO POR HORA (todos os 7 dias) ──
