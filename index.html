@@ -333,6 +333,7 @@ let lastSpo2={avg:null,min:null}; // persiste entre renders para o illness detec
 let lastSpo2Readings=[];  // leituras brutas de SpO2 (hora a hora) da última sync
 let lastSleepSessions=[]; // sessões de sono decodificadas (deep/rem/light/awake em min)
 let lastTempReadings=[];  // leituras brutas de temperatura da última sync
+let hrvRawSlots=[];       // diagnóstico HRV: slots crus, inclusive vazios/descartados
 let sensValue=null;
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -810,11 +811,20 @@ function decodeHRVPkt(v){
     const min = base+(i-start)*30;
 
     // diagnóstico: mostra inclusive slots vazios/descartados
-    log(`  HRV raw day=${curDay} pkt=${nr} slot=${hhmm(min)} valor=${h}`);
+    const valid = !!h && h >= HRV_SLOT_MIN && h <= HRV_SLOT_MAX;
 
-    if(!h || h < HRV_SLOT_MIN || h > HRV_SLOT_MAX) continue;
+hrvRawSlots.push({
+  day: curDay,
+  pkt: nr,
+  min,
+  value: h,
+  valid
+});
 
-    ringHRV[curDay][min]=h;
+log(`  HRV raw day=${curDay} pkt=${nr} slot=${hhmm(min)} valor=${h} ${valid ? "ok" : "descartado"}`);
+
+if(!valid) continue;
+ringHRV[curDay][min]=h;
   }
 }
 function decodeHRPkt(v){
@@ -1063,6 +1073,7 @@ function renderHR(){
 // ═══════════════════════════════════════════════════════════════════════
 async function pullHRV7(){
   stData("Iniciando HRV…");
+  hrvRawSlots=[];
   const DAYS=[0,1,2,3,4,5,6];
   for(const d of DAYS){
     if(!ringHRV[d])ringHRV[d]={};
@@ -1504,6 +1515,28 @@ $("btnCopy").onclick=async()=>{
     if(!Object.keys(day).length)continue;
     txt+=daysAgoToISO(d)+" | "+["C1","C2","C3","C4","C5","C6"].map(c=>CAND_FNS[c](day)??"—").join(" | ")+"\n";
   }
+
+// ── 2.5. DIAGNÓSTICO HRV RAW — inclui slots vazios/descartados ──
+if(hrvRawSlots.length){
+  txt+="\n=== DIAGNÓSTICO HRV RAW — slots recebidos ===\n";
+  for(const d of DAYS){
+    const rows=hrvRawSlots
+      .filter(x=>x.day===d)
+      .sort((a,b)=>a.min-b.min || a.pkt-b.pkt);
+
+    if(!rows.length) continue;
+
+    const iso=daysAgoToISO(d);
+    const total=rows.length;
+    const validos=rows.filter(x=>x.valid).length;
+    const meiaHoraValidos=rows.filter(x=>x.valid && x.min%60===30).length;
+    const meiaHoraRecebidos=rows.filter(x=>x.min%60===30).length;
+
+    txt+=`${iso}: recebidos=${total} válidos=${validos} slots30_recebidos=${meiaHoraRecebidos} slots30_validos=${meiaHoraValidos}\n`;
+    txt+=rows.map(x=>`${hhmm(x.min)}=${x.value}${x.valid?"":"*"}`).join(" ")+"\n";
+  }
+  txt+="L*genda: * = descartado por vazio/fo*a do range válido\n";
+}
 
   // ── 3. HRV BRUTO POR HORA (todos os 7 dias) ──
   txt+="\n=== HRV BRUTO POR SLOT ===\n";
