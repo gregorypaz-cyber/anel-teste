@@ -1098,8 +1098,6 @@ async function testAutoHRVCommands(){
   const tests = [
     {nome:"AutoHR ON 5min", bytes:[0x16,0x02,0x01,0x05]},
     {nome:"AutoHRV ON padrão", bytes:[0x38,0x02,0x01]},
-    {nome:"AutoHRV ON tentativa com intervalo 5", bytes:[0x38,0x03,0x01,0x05]},
-    {nome:"AutoHRV ON tentativa com intervalo 30", bytes:[0x38,0x03,0x01,0x1e]},
   ];
 
   for(const t of tests){
