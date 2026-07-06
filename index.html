@@ -754,7 +754,11 @@ $("btnConnect").onclick=async()=>{
     enableBtns(true);
     await send([CMD.name,0x02,0x0a,0x52,0x4b]);await wait(200);
     await send(dtBytes());await wait(200);
-    await send([0x03,0x00]); // pedir bateria
+    await send([0x03,0x00]); await wait(200); // pedir bateria
+    // habilita gravação de fundo de FC e HRV — senão o histórico volta ralo/vazio.
+    // Afeta noites FUTURAS (não é retroativo). on/off do FC é 0x01/0x02; do HRV é 0x01/0x00.
+    await send([0x16,0x02,0x01,0x05]); await wait(200); // autoHR ON, intervalo 5 min
+    await send([0x38,0x02,0x01]);      await wait(200); // autoHRV ON
   }catch(e){stConn("Falha: "+e.message,"err");}
 };
 function enableBtns(on){
@@ -1045,7 +1049,7 @@ async function pullHRV7(){
     stData(`HRV: dia ${d+1}/7 (daysAgo=${d})…`);
     const ok=await send([CMD.syncHRV,d&0xff,(d>>8)&0xff,(d>>16)&0xff,(d>>24)&0xff]);
     if(!ok){log(`Dia ${d+1} — send falhou, pulando`);collectHRV=false;continue;}
-    await wait(2200);  // aguarda pacotes chegarem
+    await wait(3000);  // aguarda pacotes chegarem
     collectHRV=false;
     const c6v=C6(ringHRV[d]),rng=RANGE(ringHRV[d]);
     const leituras=Object.keys(ringHRV[d]).length;
