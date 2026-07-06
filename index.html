@@ -1514,8 +1514,8 @@ $("btnCopy").onclick=async()=>{
 // ═══════════════════════════════════════════════════════════════════════
 (function seedValidacaoUmaVez(){
   try{
-    if(localStorage.getItem("reckRingValidationSeeded")==="v2") { renderValidacao(); return; }
-    // v2: re-semeia com 5 noites limpas + gripe marcada. med=mediana HRV anel 00-06h
+    if(localStorage.getItem("reckRingValidationSeeded")==="v3") { renderValidacao(); return; }
+    // v3: 6 noites limpas + 2 gripe. med=mediana HRV anel 00-06h. 06/07 sens=3 (corrigido)
     _saveValid([
       {date:"2026-06-28", med:45, watch:54, spo2:null, sens:null, sick:true},   // gripe
       {date:"2026-06-29", med:45, watch:47, spo2:null, sens:null, sick:true},   // gripe
@@ -1525,8 +1525,9 @@ $("btnCopy").onclick=async()=>{
       {date:"2026-07-03", med:45, watch:50, spo2:97,  sens:4,   sick:false},  // dormiu tarde
       {date:"2026-07-04", med:36, watch:41, spo2:94,  sens:2,   sick:false},  // FLAMA
       {date:"2026-07-05", med:42, watch:54, spo2:97,  sens:4,   sick:false},  // reunião família (bom)
+      {date:"2026-07-06", med:40, watch:48, spo2:98,  sens:3,   sick:false},  // xis cedo (sens 3)
     ]);
-    localStorage.setItem("reckRingValidationSeeded","v2");
+    localStorage.setItem("reckRingValidationSeeded","v3");
     renderValidacao();
   }catch(e){}
 })();
