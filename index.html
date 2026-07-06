@@ -237,7 +237,7 @@ pre{background:#090b10;border:1px solid var(--line);border-radius:8px;padding:8p
       <input type="checkbox" id="chkDoente" onchange="toggleDoente()"> 🤒 Noite de hoje foi com doença (exclui da validação)
     </label>
     <span class="hint" style="opacity:.7">| HRV relógio hoje:</span>
-    <input type="number" id="inpWatchHRV" placeholder="ms" style="width:64px;padding:3px 6px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--fg)" onchange="setWatchHRV()">
+    <input type="number" id="inpWatchHRV" placeholder="ms" style="width:64px;padding:3px 6px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--txt)" onchange="setWatchHRV()">
   </div>
   <div class="g3" id="kpiValid"></div>
   <div id="validVerdict" class="hint" style="margin-top:8px"></div>
@@ -378,7 +378,7 @@ function C5(d){
   const v=[...vw(d,0,360)].sort((a,b)=>a-b);
   if(!v.length)return null;
   const m=Math.floor(v.length/2);
-  return v.length%2?vMath.round((v[m-1]+v[m])/2);
+  return v.length%2 ? v[m] : Math.round((v[m-1]+v[m])/2);
 }
 
 // C6: máximo sono profundo 01h-06h (candidato principal — exclui 00h pré-sono e 07h artefato)
@@ -579,7 +579,7 @@ const CANDS=[
   {id:"C2",name:"Só sono real",sub:"1h–7h"},
   {id:"C3",name:"Sono profundo",sub:"1h–4h"},
   {id:"C4",name:"Pré-acordar",sub:"5h–7h"},
-  {id:"C5",name:"Mediana",sub:"0h–8h"},
+  {id:"C5",name:"Mediana sono",sub:"0h–6h"},
   {id:"C6",name:"🏆 Máx profundo",sub:"01h–06h"},
 ];
 const CAND_FNS={C1,C2,C3,C4,C5,C6};
@@ -639,7 +639,7 @@ function updateEstadoDia(){
       rv.textContent=recov;
       const sonoTxt = sSc ? ` · sono ${sSc.score}${sSc.comp.timing<0.5?" (deitou tarde!)":""}` : " · sem sono";
       rm.textContent=`HRV ${recovHRV} (med ${medHoje}ms)${sonoTxt}`;
-      er.style.borderColor = recov>=67?"var(--ok)":recov>=34?"var(--warn)":"var(--bad)";
+      er.style.borderColor = recov>=67?"var(--good)":recov>=34?"var(--warn)":"var(--bad)";
     } else {
       rv.textContent=medHoje+"ms";
       rm.textContent=`baseline insuficiente (${base.length} noites limpas, precisa 3+)`+(sSc?` · sono ${sSc.score}`:"");
@@ -1295,12 +1295,15 @@ function renderSpo2(){
     badge(leituras+" leituras","muted");
   // alerta se baixo
   if(bad){
-    $("spo2Alert").style.display="block";
-    $("spo2Alert").innerHTML="⚠️ SpO2 média noturna <90% — pode indicar apneia do sono ou problema respiratório. Consulte um médico se persistir.";
-  } else if(warn){
-    $("spo2Alert").style.display="block";
-    $("spo2Alert").innerHTML="⚠️ SpO2 média noturna "+avgNight+"% (ideal ≥95%). Monitorar nos próximos dias.";
-  }
+  $("spo2Alert").style.display="block";
+  $("spo2Alert").innerHTML="⚠️ SpO2 média noturna <90% — pode indicar apneia do sono ou problema respiratório. Consulte um médico se persistir.";
+} else if(warn){
+  $("spo2Alert").style.display="block";
+  $("spo2Alert").innerHTML="⚠️ SpO2 média noturna "+avgNight+"% (ideal ≥95%). Monitorar nos próximos dias.";
+} else {
+  $("spo2Alert").style.display="none";
+  $("spo2Alert").innerHTML="";
+}
   // persiste valores para o illness detector
   lastSpo2={avg:avgNight, min:minPct};
   lastSpo2Readings=readings.slice(); // guarda bruto para o copiar
@@ -1346,10 +1349,17 @@ function updateIllnessDetector(){
       flags.push("🌡️ Temperatura noturna elevada ("+tempDev.toFixed(1)+"°C, acima de 36.2°C)");
     }
     const el=$("illnessAlert");
-    if(flags.length>=2&&el){
-      el.style.display="block";
-      el.innerHTML="⚠️ <b>Sinais de queda imunológica ("+flags.length+" indicadores):</b><br>"+flags.join("<br>")+"<br><span style='color:var(--muted);font-size:10px'>Gate: 2+ indicadores simultâneos. Não é diagnóstico médico.</span>";
-    }
+if(el){
+  if(flags.length>=2){
+    el.style.display="block";
+    el.innerHTML="⚠️ <b>Sinais de queda imunológica ("+flags.length+" indicadores):</b><br>"+
+      flags.join("<br>")+
+      "<br><span style='color:var(--muted);font-size:10px'>Gate: 2+ indicadores simultâneos. Não é diagnóstico médico.</span>";
+  } else {
+    el.style.display="none";
+    el.innerHTML="";
+  }
+}
   }catch(e){log("illnessDetector ERR: "+e.message);}
 }
 
@@ -1496,7 +1506,7 @@ $("btnCopy").onclick=async()=>{
   }
 
   // ── 3. HRV BRUTO POR HORA (todos os 7 dias) ──
-  txt+="\n=== HRV BRUTO POR HORA ===\n";
+  txt+="\n=== HRV BRUTO POR SLOT ===\n";
   for(const d of DAYS){
     const day=ringHRV[d]??{};const mins=Object.keys(day).map(Number).sort((a,b)=>a-b);
     if(!mins.length)continue;
