@@ -145,7 +145,6 @@ pre{background:#090b10;border:1px solid var(--line);border-radius:8px;padding:8p
   <button class="btn sec sm" id="btnSpo2"  disabled>🫁 SpO2 noturna</button>
   <button class="btn sec sm" id="btnTemp"  disabled>🌡️ Temperatura noturna</button>
   <button class="btn sec sm" id="btnDiag"  disabled>🔬 Diagnóstico sono (3 ranges)</button>
-  <button class="btn sec sm" id="btnAutoHRVDiag" disabled>🧪 Testar AutoHRV</button>
 </div>
 
 <!-- HERO: C6 + RANGE (resultado principal) -->
@@ -237,7 +236,7 @@ pre{background:#090b10;border:1px solid var(--line);border-radius:8px;padding:8p
       <input type="checkbox" id="chkDoente" onchange="toggleDoente()"> 🤒 Noite de hoje foi com doença (exclui da validação)
     </label>
     <span class="hint" style="opacity:.7">| HRV relógio hoje:</span>
-    <input type="number" id="inpWatchHRV" placeholder="ms" style="width:64px;padding:3px 6px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--txt)" onchange="setWatchHRV()">
+    <input type="number" id="inpWatchHRV" placeholder="ms" style="width:64px;padding:3px 6px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--fg)" onchange="setWatchHRV()">
   </div>
   <div class="g3" id="kpiValid"></div>
   <div id="validVerdict" class="hint" style="margin-top:8px"></div>
@@ -333,7 +332,6 @@ let lastSpo2={avg:null,min:null}; // persiste entre renders para o illness detec
 let lastSpo2Readings=[];  // leituras brutas de SpO2 (hora a hora) da última sync
 let lastSleepSessions=[]; // sessões de sono decodificadas (deep/rem/light/awake em min)
 let lastTempReadings=[];  // leituras brutas de temperatura da última sync
-let hrvRawSlots=[];       // diagnóstico HRV: slots crus, inclusive vazios/descartados
 let sensValue=null;
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -374,14 +372,8 @@ function C2(d){const v=vw(d,60,420);return v.length?Math.round(mn(v)):null;}
 function C3(d){const v=vw(d,60,240);return v.length?Math.round(mn(v)):null;}
 // C4: pré-acordar 5-7h
 function C4(d){const v=vw(d,300,420);return v.length?Math.round(mn(v)):null;}
-// C5: mediana de sono 00-06h
-function C5(d){
-  const v=[...vw(d,0,360)].sort((a,b)=>a-b);
-  if(!v.length)return null;
-  const m=Math.floor(v.length/2);
-  return v.length%2 ? v[m] : Math.round((v[m-1]+v[m])/2);
-}
-
+// C5: mediana 0-8h
+function C5(d){const v=[...vw(d,0,480)].sort((a,b)=>a-b);if(!v.length)return null;const m=Math.floor(v.length/2);return v.length%2?v[m]:Math.round((v[m-1]+v[m])/2);}
 // C6: máximo sono profundo 01h-06h (candidato principal — exclui 00h pré-sono e 07h artefato)
 // Hipótese: noite recuperada tem PICOS altos; noite estressada fica achatada
 function C6(d){const v=vw(d,60,360);return v.length?Math.max(...v):null;}
@@ -580,7 +572,7 @@ const CANDS=[
   {id:"C2",name:"Só sono real",sub:"1h–7h"},
   {id:"C3",name:"Sono profundo",sub:"1h–4h"},
   {id:"C4",name:"Pré-acordar",sub:"5h–7h"},
-  {id:"C5",name:"Mediana sono",sub:"0h–6h"},
+  {id:"C5",name:"Mediana",sub:"0h–8h"},
   {id:"C6",name:"🏆 Máx profundo",sub:"01h–06h"},
 ];
 const CAND_FNS={C1,C2,C3,C4,C5,C6};
@@ -640,7 +632,7 @@ function updateEstadoDia(){
       rv.textContent=recov;
       const sonoTxt = sSc ? ` · sono ${sSc.score}${sSc.comp.timing<0.5?" (deitou tarde!)":""}` : " · sem sono";
       rm.textContent=`HRV ${recovHRV} (med ${medHoje}ms)${sonoTxt}`;
-      er.style.borderColor = recov>=67?"var(--good)":recov>=34?"var(--warn)":"var(--bad)";
+      er.style.borderColor = recov>=67?"var(--ok)":recov>=34?"var(--warn)":"var(--bad)";
     } else {
       rv.textContent=medHoje+"ms";
       rm.textContent=`baseline insuficiente (${base.length} noites limpas, precisa 3+)`+(sSc?` · sono ${sSc.score}`:"");
@@ -762,15 +754,11 @@ $("btnConnect").onclick=async()=>{
     enableBtns(true);
     await send([CMD.name,0x02,0x0a,0x52,0x4b]);await wait(200);
     await send(dtBytes());await wait(200);
-    await send([0x03,0x00]); await wait(200); // pedir bateria
-    // habilita gravação de fundo de FC e HRV — senão o histórico volta ralo/vazio.
-    // Afeta noites FUTURAS (não é retroativo). on/off do FC é 0x01/0x02; do HRV é 0x01/0x00.
-    await send([0x16,0x02,0x01,0x05]); await wait(200); // autoHR ON, intervalo 5 min
-    await send([0x38,0x02,0x01]);      await wait(200); // autoHRV ON
+    await send([0x03,0x00]); // pedir bateria
   }catch(e){stConn("Falha: "+e.message,"err");}
 };
 function enableBtns(on){
-  ["btnAll","btnHRV7","btnHR","btnSleep","btnSpo2","btnTemp","btnDiag","btnAutoHRVDiag"].forEach(id=>$(id).disabled=!on);
+  ["btnAll","btnHRV7","btnHR","btnSleep","btnSpo2","btnTemp","btnDiag"].forEach(id=>$(id).disabled=!on);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -798,34 +786,10 @@ function updateBattery(){
   el.textContent=icon+" "+batteryPct+"%";el.style.color=col;
 }
 function decodeHRVPkt(v){
-  const nr=v[1];
-  if(nr===0xff||nr===0)return;
-
-  if(!ringHRV[curDay]) ringHRV[curDay]={};
-
-  const start = nr===1 ? 3 : 2;
-  const base  = nr===1 ? 0 : (12*30+(nr-2)*13*30);
-
-  for(let i=start;i<15;i++){
-    const h = v[i];
-    const min = base+(i-start)*30;
-
-    // diagnóstico: mostra inclusive slots vazios/descartados
-    const valid = !!h && h >= HRV_SLOT_MIN && h <= HRV_SLOT_MAX;
-
-hrvRawSlots.push({
-  day: curDay,
-  pkt: nr,
-  min,
-  value: h,
-  valid
-});
-
-log(`  HRV raw day=${curDay} pkt=${nr} slot=${hhmm(min)} valor=${h} ${valid ? "ok" : "descartado"}`);
-
-if(!valid) continue;
-ringHRV[curDay][min]=h;
-  }
+  const nr=v[1];if(nr===0xff||nr===0)return;
+  if(!ringHRV[curDay])ringHRV[curDay]={};
+  const start=nr===1?3:2,base=nr===1?0:(12*30+(nr-2)*13*30);
+  for(let i=start;i<15;i++){const h=v[i];if(!h || h < HRV_SLOT_MIN || h > HRV_SLOT_MAX)continue;ringHRV[curDay][base+(i-start)*30]=h;}
 }
 function decodeHRPkt(v){
   const nr=v[1];if(nr===0xff||nr===0)return;
@@ -1073,7 +1037,6 @@ function renderHR(){
 // ═══════════════════════════════════════════════════════════════════════
 async function pullHRV7(){
   stData("Iniciando HRV…");
-  hrvRawSlots=[];
   const DAYS=[0,1,2,3,4,5,6];
   for(const d of DAYS){
     if(!ringHRV[d])ringHRV[d]={};
@@ -1082,7 +1045,7 @@ async function pullHRV7(){
     stData(`HRV: dia ${d+1}/7 (daysAgo=${d})…`);
     const ok=await send([CMD.syncHRV,d&0xff,(d>>8)&0xff,(d>>16)&0xff,(d>>24)&0xff]);
     if(!ok){log(`Dia ${d+1} — send falhou, pulando`);collectHRV=false;continue;}
-    await wait(6000);  // diagnóstico: dá mais tempo para todos os pacotes HRV chegarem
+    await wait(2200);  // aguarda pacotes chegarem
     collectHRV=false;
     const c6v=C6(ringHRV[d]),rng=RANGE(ringHRV[d]);
     const leituras=Object.keys(ringHRV[d]).length;
@@ -1090,23 +1053,6 @@ async function pullHRV7(){
   }
   renderHRV();
   stData("HRV concluído ✅","ok");
-}
-
-async function testAutoHRVCommands(){
-  stData("Testando comandos AutoHRV…","warn");
-
-  const tests = [
-    {nome:"AutoHR ON 5min", bytes:[0x16,0x02,0x01,0x05]},
-    {nome:"AutoHRV ON padrão", bytes:[0x38,0x02,0x01]},
-  ];
-
-  for(const t of tests){
-    log("🧪 "+t.nome);
-    await send(t.bytes);
-    await wait(800);
-  }
-
-  stData("Teste AutoHRV enviado. Efeito só aparece em dados futuros.","ok");
 }
 
 async function pullHR(){
@@ -1180,7 +1126,7 @@ function renderTemp(readings){
   const tempNow=readings[readings.length-1]?.c;
 
   // guarda no histórico
-  const isoToday=daysAgoToISO(0);
+  const isoToday=new Date().toISOString().slice(0,10);
   const existing=tempHistory.findIndex(t=>t.date===isoToday);
   const entry={date:isoToday,nightAvg:avgNight,min:minTemp,max:maxTemp,leituras:readings.length};
   if(existing>=0)tempHistory[existing]=entry;else tempHistory.push(entry);
@@ -1304,15 +1250,12 @@ function renderSpo2(){
     badge(leituras+" leituras","muted");
   // alerta se baixo
   if(bad){
-  $("spo2Alert").style.display="block";
-  $("spo2Alert").innerHTML="⚠️ SpO2 média noturna <90% — pode indicar apneia do sono ou problema respiratório. Consulte um médico se persistir.";
-} else if(warn){
-  $("spo2Alert").style.display="block";
-  $("spo2Alert").innerHTML="⚠️ SpO2 média noturna "+avgNight+"% (ideal ≥95%). Monitorar nos próximos dias.";
-} else {
-  $("spo2Alert").style.display="none";
-  $("spo2Alert").innerHTML="";
-}
+    $("spo2Alert").style.display="block";
+    $("spo2Alert").innerHTML="⚠️ SpO2 média noturna <90% — pode indicar apneia do sono ou problema respiratório. Consulte um médico se persistir.";
+  } else if(warn){
+    $("spo2Alert").style.display="block";
+    $("spo2Alert").innerHTML="⚠️ SpO2 média noturna "+avgNight+"% (ideal ≥95%). Monitorar nos próximos dias.";
+  }
   // persiste valores para o illness detector
   lastSpo2={avg:avgNight, min:minPct};
   lastSpo2Readings=readings.slice(); // guarda bruto para o copiar
@@ -1358,17 +1301,10 @@ function updateIllnessDetector(){
       flags.push("🌡️ Temperatura noturna elevada ("+tempDev.toFixed(1)+"°C, acima de 36.2°C)");
     }
     const el=$("illnessAlert");
-if(el){
-  if(flags.length>=2){
-    el.style.display="block";
-    el.innerHTML="⚠️ <b>Sinais de queda imunológica ("+flags.length+" indicadores):</b><br>"+
-      flags.join("<br>")+
-      "<br><span style='color:var(--muted);font-size:10px'>Gate: 2+ indicadores simultâneos. Não é diagnóstico médico.</span>";
-  } else {
-    el.style.display="none";
-    el.innerHTML="";
-  }
-}
+    if(flags.length>=2&&el){
+      el.style.display="block";
+      el.innerHTML="⚠️ <b>Sinais de queda imunológica ("+flags.length+" indicadores):</b><br>"+flags.join("<br>")+"<br><span style='color:var(--muted);font-size:10px'>Gate: 2+ indicadores simultâneos. Não é diagnóstico médico.</span>";
+    }
   }catch(e){log("illnessDetector ERR: "+e.message);}
 }
 
@@ -1446,15 +1382,6 @@ async function runDiag(){
 // ═══════════════════════════════════════════════════════════════════════
 // BOTÕES
 // ═══════════════════════════════════════════════════════════════════════
-
-$("btnAutoHRVDiag").onclick=async()=>{
-  try{
-    await testAutoHRVCommands();
-  }catch(e){
-    stData("Erro AutoHRV diag: "+e.message,"err");
-  }
-};
-
 $("btnAll").onclick=async()=>{
   $("btnAll").disabled=true;
   try{
@@ -1506,7 +1433,7 @@ $("btnCopy").onclick=async()=>{
 
   // ── 2. TODOS OS CANDIDATOS C1–C6 (não só o C6) ──
   txt+="\n=== CANDIDATOS HRV C1–C6 (7 dias) ===\n";
-  txt+="Legenda: C1=média0-8h C2=média1-7h C3=média1-4h C4=média5-7h C5=mediana0-6h C6=máx1-6h\n";
+  txt+="Legenda: C1=média0-8h C2=média1-7h C3=média1-4h C4=média5-7h C5=mediana0-8h C6=máx1-6h\n";
   txt+="Data       | C1 | C2 | C3 | C4 | C5 | C6\n";
   for(const d of DAYS){
     const day=ringHRV[d]??{};
@@ -1514,30 +1441,8 @@ $("btnCopy").onclick=async()=>{
     txt+=daysAgoToISO(d)+" | "+["C1","C2","C3","C4","C5","C6"].map(c=>CAND_FNS[c](day)??"—").join(" | ")+"\n";
   }
 
-// ── 2.5. DIAGNÓSTICO HRV RAW — inclui slots vazios/descartados ──
-if(hrvRawSlots.length){
-  txt+="\n=== DIAGNÓSTICO HRV RAW — slots recebidos ===\n";
-  for(const d of DAYS){
-    const rows=hrvRawSlots
-      .filter(x=>x.day===d)
-      .sort((a,b)=>a.min-b.min || a.pkt-b.pkt);
-
-    if(!rows.length) continue;
-
-    const iso=daysAgoToISO(d);
-    const total=rows.length;
-    const validos=rows.filter(x=>x.valid).length;
-    const meiaHoraValidos=rows.filter(x=>x.valid && x.min%60===30).length;
-    const meiaHoraRecebidos=rows.filter(x=>x.min%60===30).length;
-
-    txt+=`${iso}: recebidos=${total} válidos=${validos} slots30_recebidos=${meiaHoraRecebidos} slots30_validos=${meiaHoraValidos}\n`;
-    txt+=rows.map(x=>`${hhmm(x.min)}=${x.value}${x.valid?"":"*"}`).join(" ")+"\n";
-  }
-  txt+="Legenda: * = descartado por vazio/fora do range válido\n";
-}
-
   // ── 3. HRV BRUTO POR HORA (todos os 7 dias) ──
-  txt+="\n=== HRV BRUTO POR SLOT ===\n";
+  txt+="\n=== HRV BRUTO POR HORA ===\n";
   for(const d of DAYS){
     const day=ringHRV[d]??{};const mins=Object.keys(day).map(Number).sort((a,b)=>a-b);
     if(!mins.length)continue;
@@ -1609,8 +1514,8 @@ if(hrvRawSlots.length){
 // ═══════════════════════════════════════════════════════════════════════
 (function seedValidacaoUmaVez(){
   try{
-    if(localStorage.getItem("reckRingValidationSeeded")==="v3") { renderValidacao(); return; }
-    // v3: 6 noites limpas + 2 gripe. med=mediana HRV anel 00-06h. 06/07 sens=3 (corrigido)
+    if(localStorage.getItem("reckRingValidationSeeded")==="v4") { renderValidacao(); return; }
+    // v4: 8 noites limpas + 2 gripe. med=mediana HRV anel 00-06h
     _saveValid([
       {date:"2026-06-28", med:45, watch:54, spo2:null, sens:null, sick:true},   // gripe
       {date:"2026-06-29", med:45, watch:47, spo2:null, sens:null, sick:true},   // gripe
@@ -1619,10 +1524,12 @@ if(hrvRawSlots.length){
       {date:"2026-07-02", med:41, watch:50, spo2:97,  sens:4,   sick:false},  // banh madrug
       {date:"2026-07-03", med:45, watch:50, spo2:97,  sens:4,   sick:false},  // dormiu tarde
       {date:"2026-07-04", med:36, watch:41, spo2:94,  sens:2,   sick:false},  // FLAMA
-      {date:"2026-07-05", med:42, watch:54, spo2:97,  sens:4,   sick:false},  // reunião família (bom)
-      {date:"2026-07-06", med:40, watch:48, spo2:98,  sens:3,   sick:false},  // xis cedo (sens 3)
+      {date:"2026-07-05", med:42, watch:54, spo2:97,  sens:4,   sick:false},  // reunião (bom)
+      {date:"2026-07-06", med:40, watch:48, spo2:98,  sens:3,   sick:false},  // xis cedo
+      {date:"2026-07-07", med:49, watch:56, spo2:98,  sens:5,   sick:false},  // ÓTIMA
+      {date:"2026-07-08", med:48, watch:54, spo2:98,  sens:5,   sick:false},  // boa2
     ]);
-    localStorage.setItem("reckRingValidationSeeded","v3");
+    localStorage.setItem("reckRingValidationSeeded","v4");
     renderValidacao();
   }catch(e){}
 })();
