@@ -1514,8 +1514,8 @@ $("btnCopy").onclick=async()=>{
 // ═══════════════════════════════════════════════════════════════════════
 (function seedValidacaoUmaVez(){
   try{
-    if(localStorage.getItem("reckRingValidationSeeded")==="v4") { renderValidacao(); return; }
-    // v4: 8 noites limpas + 2 gripe. med=mediana HRV anel 00-06h
+    if(localStorage.getItem("reckRingValidationSeeded")==="v5") { renderValidacao(); return; }
+    // v5: 9 noites limpas + 2 gripe. med=mediana HRV anel 00-06h
     _saveValid([
       {date:"2026-06-28", med:45, watch:54, spo2:null, sens:null, sick:true},   // gripe
       {date:"2026-06-29", med:45, watch:47, spo2:null, sens:null, sick:true},   // gripe
@@ -1528,8 +1528,9 @@ $("btnCopy").onclick=async()=>{
       {date:"2026-07-06", med:40, watch:48, spo2:98,  sens:3,   sick:false},  // xis cedo
       {date:"2026-07-07", med:49, watch:56, spo2:98,  sens:5,   sick:false},  // ÓTIMA
       {date:"2026-07-08", med:48, watch:54, spo2:98,  sens:5,   sick:false},  // boa2
+      {date:"2026-07-09", med:40, watch:48, spo2:97,  sens:3,   sick:false},  // preocupação/estresse
     ]);
-    localStorage.setItem("reckRingValidationSeeded","v4");
+    localStorage.setItem("reckRingValidationSeeded","v5");
     renderValidacao();
   }catch(e){}
 })();
