@@ -301,8 +301,20 @@ const STAGE = {light:0x02,deep:0x03,rem:0x04,awake:0x05};
 
 const HRV_SLOT_MIN  = 10;   // ms — abaixo disso é artefato
 const HRV_SLOT_MAX  = 200;  // ms — acima disso é artefato
-const NIGHT_MIN_SLOTS = 6;  // mínimo de slots válidos na janela 01h–06h (min 60–360)
-                             // para considerar a noite "ok"
+
+// ── Gate de qualidade da noite: OBTIDO vs ESPERADO ──────────────────────────
+// O firmware do R10 entrega HRV 1x por HORA (a grade do decodeHRVPkt é de 30min,
+// mas os slots :30 chegam zerados e são filtrados). Verificado no export real:
+// 100% das leituras dos 7 dias caem na hora cheia. Logo a janela 01h–06h comporta
+// no MÁXIMO 6 leituras — e o gate fixo antigo (>= 6) exigia 6/6, comparecimento
+// PERFEITO: uma única hora perdida derrubava a noite (caso 10/07 — noite de ~7h
+// com só o slot das 06:00 ausente, descartada como "leitura ruim").
+// Agora o esperado vem do SONO real (quantas horas cheias da janela caíram dentro
+// de deitar→acordar) e a noite vale se obtido >= 70% do esperado.
+const HRV_SLOT_STEP       = 60;   // min — cadência real de HRV do anel
+const NIGHT_SLOTS_RATIO   = 0.70; // obtido/esperado mínimo p/ a noite valer
+const NIGHT_SLOTS_ABS_MIN = 3;    // piso absoluto: <3 leituras não sustenta mediana
+const NIGHT_MIN_SLOTS     = 6;    // fallback quando a noite não tem sono decodificado
 
 // ═══════════════════════════════════════════════════════════════════════
 // DADOS ZEPP (Base44) — 7 dias
@@ -391,13 +403,36 @@ function C6(d){const v=vw(d,SLEEP_LO,SLEEP_HI);return v.length?Math.max(...v):nu
 function RANGE(d){const v=vw(d,SLEEP_LO,SLEEP_HI);return v.length>=2?Math.max(...v)-Math.min(...v):null;}
 
 const QUALITY_BADGE = { ok: '✅', low: '⚠️ poucos slots', discarded: '⛔ descartada' };
+// dAgo do objeto-dia. Todos os dias vêm de ringHRV, então a identidade resolve
+// (allDays[dd] guarda a MESMA referência de ringHRV[dd]).
+function _dAgoOfDay(day){
+  if(!day || typeof ringHRV==="undefined") return null;
+  for(const k of Object.keys(ringHRV)) if(ringHRV[k]===day) return +k;
+  return null;
+}
+// Quantas horas cheias da janela 01h–06h caíram DENTRO do sono daquela noite.
+// null = sem sono decodificado p/ a noite (o gate cai no fallback fixo).
+function expectedSlots(dAgo){
+  if(dAgo==null || typeof lastSleepSessions==="undefined" || !Array.isArray(lastSleepSessions)) return null;
+  const s = lastSleepSessions.find(x=>x.dAgo===dAgo);
+  if(!s || s.ss==null || s.se==null) return null;
+  const start = s.ss > s.se ? s.ss - 1440 : s.ss;   // mesma convenção do renderSleep
+  let n = 0;
+  for(let m=SLEEP_LO; m<=SLEEP_HI; m+=HRV_SLOT_STEP) if(m>=start && m<=s.se) n++;
+  return n;
+}
+// Quantos slots a noite PRECISA ter p/ valer 'ok' (obtido vs esperado).
+function requiredSlots(day){
+  const exp = expectedSlots(_dAgoOfDay(day));
+  if(exp==null) return NIGHT_MIN_SLOTS;   // sem sono -> gate fixo antigo
+  return Math.max(NIGHT_SLOTS_ABS_MIN, Math.ceil(NIGHT_SLOTS_RATIO * exp));
+}
 // Retorna 'ok', 'low' ou 'discarded'
 // Conta slots válidos na janela de sono profundo (01h–06h = min 60–360)
 function nightQuality(day) {
-  const slots = Object.entries(day || {})
-    .filter(([m, v]) => +m >= SLEEP_LO && +m <= SLEEP_HI && v >= HRV_SLOT_MIN && v <= HRV_SLOT_MAX);
-  if (slots.length === 0)             return 'discarded';
-  if (slots.length < NIGHT_MIN_SLOTS) return 'low';
+  const slots = nightSlots(day);              // fonte única de contagem
+  if (slots === 0)                    return 'discarded';
+  if (slots < requiredSlots(day))     return 'low';
   return 'ok';
 }
 // nº de slots válidos na janela de sono (para exibir/auditar)
@@ -658,7 +693,7 @@ function updateEstadoDia(){
   // CASO ESPECIAL: leitura ruim (poucos slots) — NÃO calcula recovery (corrige bug 10/07)
   if(day0 && qualHoje && qualHoje!=='ok' && medHoje==null){
     rv.textContent="⚠️";
-    rm.textContent=`leitura insuficiente (${slotsHoje} slots, precisa ${NIGHT_MIN_SLOTS}+) — re-sincronize o anel`;
+    rm.textContent=`leitura insuficiente (${slotsHoje} slots, precisa ${requiredSlots(day0)}+) — re-sincronize o anel`;
     er.style.borderColor="var(--warn)";
   } else if(medHoje!=null){
     const log=(typeof _loadValid==="function")?_loadValid():[];
@@ -1559,7 +1594,8 @@ $("btnCopy").onclick=async()=>{
       const tot=(s.deep+s.rem+s.light+s.awake)||1;
       const iso=daysAgoToISO(s.dAgo);
       txt+=`${iso}: deep=${s.deep} rem=${s.rem} light=${s.light} awake=${s.awake} despertares=${s.ap} `+
-           `| deep%=${Math.round(s.deep/tot*100)} rem%=${Math.round(s.rem/tot*100)} dur=${(tot/60).toFixed(1)}h\n`;
+           `| deep%=${Math.round(s.deep/tot*100)} rem%=${Math.round(s.rem/tot*100)} dur=${(tot/60).toFixed(1)}h `+
+           `| deitar=${hhmm(s.ss)} acordar=${hhmm(s.se)} slots=${nightSlots(ringHRV[s.dAgo]??{})}/${expectedSlots(s.dAgo)??"—"}\n`;
     });
   }
 
